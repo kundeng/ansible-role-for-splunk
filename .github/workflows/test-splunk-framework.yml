@@ -1,0 +1,99 @@
+name: Test Splunk Framework
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  MOLECULE_DESTROY_CONTAINERS: ${{ github.event.inputs.keep_containers || 'true' }}
+  MOLECULE_PRESERVE_DATA: ${{ github.event.inputs.preserve_data || 'false' }}
+
+jobs:
+  test-framework:
+    runs-on: self-hosted  # Requires self-hosted runner with Docker + 64GB RAM
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - default
+          # Future scenarios:
+          # - backup-restore
+          # - upgrade-testing
+          # - app-deployment
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install molecule[docker] docker-py ansible-lint yamllint
+
+      - name: Install just command runner
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+          just --version
+
+      - name: Build base Docker images
+        run: just build-images
+
+      - name: Run Molecule test - ${{ matrix.scenario }}
+        run: |
+          cd molecule/${{ matrix.scenario }}
+          molecule test
+        env:
+          MOLECULE_DISTRO: mixed  # Uses both CentOS and Ubuntu
+          MOLECULE_DOCKER_COMMAND: ""  # Use default systemd init
+
+      - name: Show container status on failure
+        if: failure()
+        run: |
+          echo "=== Container Status ==="
+          just status
+          echo "=== XPipe Controller Logs ==="
+          just logs ansible-controller || true
+          echo "=== Cluster Manager Logs ==="  
+          just logs splunk-master || true
+
+      - name: Cleanup containers (conditional)
+        if: always() && env.MOLECULE_DESTROY_CONTAINERS == 'true'
+        run: just destroy
+
+      - name: Archive test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-${{ matrix.scenario }}
+          path: |
+            molecule/${{ matrix.scenario }}/.molecule/
+            *.log
+          retention-days: 7
+
+  test-act-locally:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout repository  
+        uses: actions/checkout@v4
+
+      - name: Test with act (local simulation)
+        run: |
+          echo "🎭 This workflow can be tested locally with act:"
+          echo "1. Install act: curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash"
+          echo "2. Run: act --container-daemon-socket /var/run/docker.sock"
+          echo "3. Act will mount host Docker socket and create sibling containers"
+          echo "4. All 10 Splunk containers will run as siblings on your Docker host"
+          echo ""
+          echo "⚠️  Requirements for local testing:"
+          echo "- Docker with 64GB+ RAM allocated"  
+          echo "- 16+ CPU cores recommended"
+          echo "- Privileged container support enabled"

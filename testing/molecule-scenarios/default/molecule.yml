@@ -1,0 +1,306 @@
+---
+driver:
+  name: docker
+
+platforms:
+  # Ansible Controller with XPipe
+  - name: ansible-controller
+    image: xpipe-ansible-controller:latest
+    privileged: false
+    networks:
+      - name: splunk-test-network
+    ports:
+      - "3000:3000"  # XPipe Web Desktop
+      - "3001:3001"  # XPipe Web Desktop (alternative)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - molecule-data:/ansible-workspace:rw
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: America/New_York
+
+  # Core cluster infrastructure
+  - name: splunk-master
+    image: splunk-base-centos9:latest
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-master-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - clustermanager
+
+  - name: splunk-license
+    image: splunk-base-ubuntu2204:latest
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-license-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - licensemaster
+      - dmc
+
+  - name: splunk-fwdmanager
+    image: splunk-base-centos9:latest
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-ds-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - deploymentserver
+
+  # Indexing tier (2 indexers, 2 sites)
+  - name: splunkapp-prod01
+    image: splunk-base-ubuntu2204:latest
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-idx1-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - indexer
+      - indexer_site1
+
+  - name: splunkapp-prod02
+    image: splunk-base-centos9:latest
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-idx2-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - indexer
+      - indexer_site2
+
+  # Search Head Cluster (2 nodes)
+  - name: splunkshc-prod01
+    image: splunk-base-ubuntu2204:latest
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-shc1-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - shcluster
+
+  - name: splunkshc-prod02
+    image: splunk-base-centos9:latest
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-shc2-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - shcluster
+
+  - name: splunk-deploy
+    image: splunk-base-ubuntu2204:latest
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-deployer-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - shdeployer
+
+  # Universal Forwarder (data source)
+  - name: splunk-uf01
+    image: splunk-base-ubuntu2204:latest
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-uf1-data:/opt/splunkforwarder:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - uf
+
+  # GitLab for app testing
+  - name: gitlab
+    image: splunk-gitlab:latest
+    networks:
+      - name: splunk-test-network
+    ports:
+      - "8929:8929"
+    volumes:
+      - gitlab-data:/var/opt/gitlab:rw
+      - gitlab-logs:/var/log/gitlab:rw
+      - gitlab-config:/etc/gitlab:rw
+    groups:
+      - git_server
+
+provisioner:
+  name: ansible
+  inventory:
+    hosts:
+      splunk-master:
+        ansible_user: ansible
+        ansible_password: ansible
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_connection: docker
+      splunk-license:
+        ansible_user: ansible
+        ansible_password: ansible
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_connection: docker
+      splunk-fwdmanager:
+        ansible_user: ansible
+        ansible_password: ansible
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_connection: docker
+      splunkapp-prod01:
+        ansible_user: ansible
+        ansible_password: ansible
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_connection: docker
+      splunkapp-prod02:
+        ansible_user: ansible
+        ansible_password: ansible
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_connection: docker
+      splunkshc-prod01:
+        ansible_user: ansible
+        ansible_password: ansible
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_connection: docker
+      splunkshc-prod02:
+        ansible_user: ansible
+        ansible_password: ansible
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_connection: docker
+      splunk-deploy:
+        ansible_user: ansible
+        ansible_password: ansible
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_connection: docker
+      splunk-uf01:
+        ansible_user: ansible
+        ansible_password: ansible
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_connection: docker
+      gitlab:
+        ansible_user: root
+        ansible_password: Password1!
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_connection: docker
+    groups:
+      full:
+        children:
+          - clustermanager
+          - licensemaster
+          - dmc
+          - deploymentserver
+          - indexer
+          - shcluster
+          - shdeployer
+      uf:
+        children:
+          - uf
+      clustermanager:
+        hosts:
+          - splunk-master
+      licensemaster:
+        hosts:
+          - splunk-license
+      dmc:
+        hosts:
+          - splunk-license
+      deploymentserver:
+        hosts:
+          - splunk-fwdmanager
+      indexer:
+        hosts:
+          - splunkapp-prod01
+          - splunkapp-prod02
+      indexer_site1:
+        hosts:
+          - splunkapp-prod01
+      indexer_site2:
+        hosts:
+          - splunkapp-prod02
+      shcluster:
+        hosts:
+          - splunkshc-prod01
+          - splunkshc-prod02
+      shdeployer:
+        hosts:
+          - splunk-deploy
+      uf:
+        hosts:
+          - splunk-uf01
+      git_server:
+        hosts:
+          - gitlab
+
+verifier:
+  name: ansible
+
+scenario:
+  destroy_sequence:
+    - cleanup
+  create_sequence:
+    - dependency
+    - create
+    - prepare
+  converge_sequence:
+    - dependency
+    - create
+    - prepare
+    - converge
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - create
+    - prepare
+    - converge
+    - verify
+    - cleanup
+    - destroy
