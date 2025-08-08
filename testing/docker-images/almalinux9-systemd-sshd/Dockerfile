@@ -1,4 +1,4 @@
-FROM centos:stream9
+FROM almalinux:9
 ENV container=docker
 
 RUN dnf -y install systemd systemd-sysv openssh-server sudo python3 passwd && \

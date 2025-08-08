@@ -1,6 +1,13 @@
 # Splunk Testing Framework with Docker + Molecule
 # Usage: just <command>
 
+# Variables - following engineering best practices
+repo_root := justfile_directory()
+testing_dir := repo_root / "testing"
+docker_images_dir := testing_dir / "docker-images"
+molecule_dir := testing_dir / "molecule-scenarios"
+workflows_dir := repo_root / ".github" / "workflows"
+
 # Default recipe - show available commands
 default:
     @just --list
@@ -39,59 +46,59 @@ setup: install-deps build-images
 # Build all base Docker images
 build-images:
     @echo "Building Splunk testing framework Docker images..."
-    docker build -t splunk-base-centos9:latest ./base/centos9-systemd-sshd/
-    docker build -t splunk-base-ubuntu2204:latest ./base/ubuntu2204-systemd-sshd/
-    docker build -t splunk-gitlab:latest ./base/gitlab/
-    docker build -t xpipe-ansible-controller:latest ./base/ansible-controller/
+    docker build -t splunk-base-almalinux9:latest {{docker_images_dir}}/almalinux9-systemd-sshd/
+    docker build -t splunk-base-ubuntu2204:latest {{docker_images_dir}}/ubuntu2204-systemd-sshd/
+    docker build -t splunk-gitlab:latest {{docker_images_dir}}/gitlab/
+    docker build -t ansible-controller:latest {{docker_images_dir}}/ansible-controller/
     @echo "✅ All images built successfully!"
 
 # Build individual images
-build-centos:
-    docker build -t splunk-base-centos9:latest ./base/centos9-systemd-sshd/
+build-almalinux:
+    docker build -t splunk-base-almalinux9:latest {{docker_images_dir}}/almalinux9-systemd-sshd/
 
 build-ubuntu:
-    docker build -t splunk-base-ubuntu2204:latest ./base/ubuntu2204-systemd-sshd/
+    docker build -t splunk-base-ubuntu2204:latest {{docker_images_dir}}/ubuntu2204-systemd-sshd/
 
 build-gitlab:
-    docker build -t splunk-gitlab:latest ./base/gitlab/
+    docker build -t splunk-gitlab:latest {{docker_images_dir}}/gitlab/
 
 build-controller:
-    docker build -t xpipe-ansible-controller:latest ./base/ansible-controller/
+    docker build -t ansible-controller:latest {{docker_images_dir}}/ansible-controller/
 
-# Molecule testing commands
+# Molecule testing commands  
 test: build-images
     @echo "🧪 Running full Molecule test suite..."
-    molecule test
+    cd {{molecule_dir}} && molecule test
 
 # Start containers for development (don't destroy)
 dev: build-images
     @echo "🚀 Starting development environment..."
-    molecule converge --destroy never
+    cd {{molecule_dir}} && molecule converge --destroy never
 
 # Create containers only (no provisioning)
 create: build-images
     @echo "📦 Creating containers..."
-    molecule create
+    cd {{molecule_dir}} && molecule create
 
 # Run Ansible provisioning on existing containers
 converge:
     @echo "⚙️  Running Ansible provisioning..."
-    molecule converge
+    cd {{molecule_dir}} && molecule converge
 
 # Verify the deployment
 verify:
     @echo "✅ Verifying deployment..."
-    molecule verify
+    cd {{molecule_dir}} && molecule verify
 
 # Clean up containers
 cleanup:
     @echo "🧹 Cleaning up containers..."
-    molecule cleanup
+    cd {{molecule_dir}} && molecule cleanup
 
 # Destroy all containers and cleanup
 destroy:
     @echo "💥 Destroying test environment..."
-    molecule destroy
+    cd {{molecule_dir}} && molecule destroy
 
 # Reset everything - destroy and clean Docker
 reset: destroy
@@ -102,7 +109,7 @@ reset: destroy
 # Show status of containers
 status:
     @echo "📊 Container status:"
-    docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    docker ps -a --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}\t{{ '{{' }}.Ports{{ '}}' }}"
 
 # Open XPipe web interface
 open-xpipe:
@@ -111,11 +118,11 @@ open-xpipe:
 
 # Show logs for specific container
 logs container:
-    docker logs {{container}}
+    docker logs {{ '{{' }}container{{ '}}' }}
 
 # Execute shell in container
 shell container:
-    docker exec -it {{container}} /bin/bash
+    docker exec -it {{ '{{' }}container{{ '}}' }} /bin/bash
 
 # Monitor all container logs
 monitor:
@@ -135,12 +142,12 @@ test-local: check-deps
     act --container-daemon-socket /var/run/docker.sock
 
 test-local-workflow workflow: check-deps
-    @echo "🎭 Running specific workflow locally: {{workflow}}"
-    act -W .github/workflows/{{workflow}} --container-daemon-socket /var/run/docker.sock
+    @echo "🎭 Running specific workflow locally: {{ '{{' }}workflow{{ '}}' }}"
+    act -W .github/workflows/{{ '{{' }}workflow{{ '}}' }} --container-daemon-socket /var/run/docker.sock
 
 test-local-event event: check-deps  
-    @echo "🎭 Running GitHub Actions for event: {{event}}"
-    act {{event}} --container-daemon-socket /var/run/docker.sock
+    @echo "🎭 Running GitHub Actions for event: {{ '{{' }}event{{ '}}' }}"
+    act {{ '{{' }}event{{ '}}' }} --container-daemon-socket /var/run/docker.sock
 
 # Show what act would do without running
 dry-run:

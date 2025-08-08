@@ -1,0 +1,127 @@
+---
+all:
+  vars:
+    # Essential configuration from production inventory
+    splunk_backup: true
+    splunk_backup_path: "{{splunk_home}}/.."
+    splunk_backup_tar: "splunk-test-backup.tar"
+    ansible_user: ansible
+    ansible_password: ansible
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_connection: docker
+    
+    # Git configuration for app deployment testing
+    git_server: "http://gitlab:8929"  # Using local GitLab container
+    git_key: "/tmp/test_git_key"  # Test key for GitLab access
+    git_local_clone_path: ~/git_apps
+    
+    # Splunk configuration - adapted for testing
+    splunk_home: /opt/splunk
+    splunk_install_path: /opt
+    splunk_nix_user: splunk
+    splunk_nix_group: splunk
+    splunk_admin_username: admin
+    splunk_admin_password: "Password123!"  # Test password
+    splunk_auth: "{{ splunk_admin_username }}:{{ splunk_admin_password }}"
+    
+    # Cluster configuration for testing
+    splunk_idxc_key: test-indexer-key
+    splunk_idxc_rf: 1  # Reduced for testing
+    splunk_idxc_sf: 1  # Reduced for testing
+    splunk_idxc_rep_port: 9887
+    splunk_idxc_label: test-idxc
+    
+    splunk_shc_key: test-searchhead-key
+    splunk_shc_label: test-shc
+    splunk_shc_rf: 2  # Reduced for testing
+    splunk_shc_rep_port: 8100
+    splunk_shc_target_group: shcluster
+    
+    # Test versions - using stable versions for testing
+    splunk_version: 9.1.2
+    splunk_package_url_full: "https://download.splunk.com/products/splunk/releases/9.1.2/linux/splunk-9.1.2-b6b9c8185839-Linux-x86_64.tgz"
+    splunk_package_url_uf: "https://download.splunk.com/products/universalforwarder/releases/9.1.2/linux/splunkforwarder-9.1.2-b6b9c8185839-Linux-x86_64.tgz"
+
+  children:
+    full:
+      children:
+        clustermanager:
+          hosts:
+            splunk-master:
+              # Custom apps for cluster manager
+              git_apps:
+                - git_project: test/splunk_apps/
+                  git_version: main
+                  name: cluster_manager_app
+                  
+        licensemaster:
+          hosts:
+            splunk-license:
+              # License server specific config
+              git_apps:
+                - git_project: test/splunk_apps/
+                  git_version: main
+                  name: license_server_app
+                  
+        dmc:
+          hosts:
+            splunk-license:  # DMC on license server for testing
+              
+        deploymentserver:
+          hosts:
+            splunk-fwdmanager:
+              # Deployment server apps
+              git_apps:
+                - git_project: test/splunk_apps/
+                  git_version: main
+                  name: deployment_server_app
+                  
+        indexer:
+          hosts:
+            splunkapp-prod01:
+              splunk_idxc_site: site1
+            splunkapp-prod02:
+              splunk_idxc_site: site2
+              
+        indexer_site1:
+          hosts:
+            splunkapp-prod01:
+            
+        indexer_site2:
+          hosts:
+            splunkapp-prod02:
+            
+        shcluster:
+          hosts:
+            splunkshc-prod01:
+            splunkshc-prod02:
+            
+        shdeployer:
+          hosts:
+            splunk-deploy:
+              vars:
+                target_shc_group_name: shcluster
+              # Search head deployer apps - comprehensive test list
+              git_apps:
+                - git_project: test/splunk_apps/
+                  git_version: main
+                  name: test_search_app
+                - git_project: test/splunk_apps/
+                  git_version: main
+                  name: test_dashboard_app
+                - git_project: test/splunk_apps/
+                  git_version: main
+                  name: test_lookup_app
+                  
+        uf:
+          hosts:
+            splunk-uf01:
+              # Universal forwarder specific config
+              clientName: test-uf01
+              splunk_uri_ds: "splunk-fwdmanager:8089"
+              
+        git_server:
+          hosts:
+            gitlab:
+              ansible_user: root
+              ansible_password: "Password1!"

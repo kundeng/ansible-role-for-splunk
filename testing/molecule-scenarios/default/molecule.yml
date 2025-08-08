@@ -22,7 +22,7 @@ platforms:
 
   # Core cluster infrastructure
   - name: splunk-master
-    image: splunk-base-centos9:latest
+    image: splunk-base-almalinux9:latest
     privileged: true
     networks:
       - name: splunk-test-network
@@ -53,7 +53,7 @@ platforms:
       - dmc
 
   - name: splunk-fwdmanager
-    image: splunk-base-centos9:latest
+    image: splunk-base-almalinux9:latest
     privileged: true
     networks:
       - name: splunk-test-network
@@ -85,7 +85,7 @@ platforms:
       - indexer_site1
 
   - name: splunkapp-prod02
-    image: splunk-base-centos9:latest
+    image: splunk-base-almalinux9:latest
     privileged: true
     networks:
       - name: splunk-test-network
@@ -117,7 +117,7 @@ platforms:
       - shcluster
 
   - name: splunkshc-prod02
-    image: splunk-base-centos9:latest
+    image: splunk-base-almalinux9:latest
     privileged: true
     networks:
       - name: splunk-test-network
@@ -179,105 +179,8 @@ platforms:
 provisioner:
   name: ansible
   inventory:
-    hosts:
-      splunk-master:
-        ansible_user: ansible
-        ansible_password: ansible
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_connection: docker
-      splunk-license:
-        ansible_user: ansible
-        ansible_password: ansible
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_connection: docker
-      splunk-fwdmanager:
-        ansible_user: ansible
-        ansible_password: ansible
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_connection: docker
-      splunkapp-prod01:
-        ansible_user: ansible
-        ansible_password: ansible
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_connection: docker
-      splunkapp-prod02:
-        ansible_user: ansible
-        ansible_password: ansible
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_connection: docker
-      splunkshc-prod01:
-        ansible_user: ansible
-        ansible_password: ansible
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_connection: docker
-      splunkshc-prod02:
-        ansible_user: ansible
-        ansible_password: ansible
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_connection: docker
-      splunk-deploy:
-        ansible_user: ansible
-        ansible_password: ansible
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_connection: docker
-      splunk-uf01:
-        ansible_user: ansible
-        ansible_password: ansible
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_connection: docker
-      gitlab:
-        ansible_user: root
-        ansible_password: Password1!
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_connection: docker
-    groups:
-      full:
-        children:
-          - clustermanager
-          - licensemaster
-          - dmc
-          - deploymentserver
-          - indexer
-          - shcluster
-          - shdeployer
-      uf:
-        children:
-          - uf
-      clustermanager:
-        hosts:
-          - splunk-master
-      licensemaster:
-        hosts:
-          - splunk-license
-      dmc:
-        hosts:
-          - splunk-license
-      deploymentserver:
-        hosts:
-          - splunk-fwdmanager
-      indexer:
-        hosts:
-          - splunkapp-prod01
-          - splunkapp-prod02
-      indexer_site1:
-        hosts:
-          - splunkapp-prod01
-      indexer_site2:
-        hosts:
-          - splunkapp-prod02
-      shcluster:
-        hosts:
-          - splunkshc-prod01
-          - splunkshc-prod02
-      shdeployer:
-        hosts:
-          - splunk-deploy
-      uf:
-        hosts:
-          - splunk-uf01
-      git_server:
-        hosts:
-          - gitlab
+    links:
+      hosts: inventory.yml
 
 verifier:
   name: ansible
