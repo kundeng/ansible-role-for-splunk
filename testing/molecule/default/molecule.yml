@@ -1,0 +1,225 @@
+---
+driver:
+  name: docker
+  options:
+    # Use existing local images - no rebuild needed
+    ansible_user: ansible
+    ansible_connection: docker
+
+platforms:
+  # Ansible Controller with XPipe (disabled - image not available)
+  # - name: ansible-controller
+  #   image: ansible-controller:latest
+  #   privileged: false
+  #   networks:
+  #     - name: splunk-test-network
+  #   ports:
+  #     - "3000:3000"  # XPipe Web Desktop
+  #     - "3001:3001"  # XPipe Web Desktop (alternative)
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:rw
+  #     - molecule-data:/ansible-workspace:rw
+  #   environment:
+  #     PUID: 1000
+  #     PGID: 1000
+  #     TZ: America/New_York
+
+  # Core cluster infrastructure
+  - name: splunk-master
+    image: splunk-base-almalinux9:latest
+    pre_build_image: true
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-master-data:/opt/splunk:rw
+      - ssh-keys:/shared/ssh_keys:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - clustermanager
+
+  - name: splunk-license
+    image: splunk-base-ubuntu2204:latest
+    pre_build_image: true
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-license-data:/opt/splunk:rw
+      - ssh-keys:/shared/ssh_keys:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - licensemaster
+      - dmc
+
+  - name: splunk-fwdmanager
+    image: splunk-base-almalinux9:latest
+    pre_build_image: true
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-ds-data:/opt/splunk:rw
+      - ssh-keys:/shared/ssh_keys:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - deploymentserver
+
+  # Indexing tier (2 indexers, 2 sites)
+  - name: splunkapp-prod01
+    image: splunk-base-ubuntu2204:latest
+    pre_build_image: true
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-idx1-data:/opt/splunk:rw
+      - ssh-keys:/shared/ssh_keys:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - indexer
+      - indexer_site1
+
+  - name: splunkapp-prod02
+    image: splunk-base-almalinux9:latest
+    pre_build_image: true
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-idx2-data:/opt/splunk:rw
+      - ssh-keys:/shared/ssh_keys:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - indexer
+      - indexer_site2
+
+  # Search Head Cluster (2 nodes)
+  - name: splunkshc-prod01
+    image: splunk-base-ubuntu2204:latest
+    pre_build_image: true
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-shc1-data:/opt/splunk:rw
+      - ssh-keys:/shared/ssh_keys:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - shcluster
+
+  - name: splunkshc-prod02
+    image: splunk-base-almalinux9:latest
+    pre_build_image: true
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-shc2-data:/opt/splunk:rw
+      - ssh-keys:/shared/ssh_keys:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - shcluster
+
+  - name: splunk-deploy
+    image: splunk-base-ubuntu2204:latest
+    pre_build_image: true
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-deployer-data:/opt/splunk:rw
+      - ssh-keys:/shared/ssh_keys:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - shdeployer
+
+  # Universal Forwarder (data source)
+  - name: splunk-uf01
+    image: splunk-base-ubuntu2204:latest
+    pre_build_image: true
+    privileged: true
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - splunk-uf1-data:/opt/splunkforwarder:rw
+      - ssh-keys:/shared/ssh_keys:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - uf
+
+  # Gitea server for app testing  
+  - name: git-server
+    image: splunk-git-server:latest
+    pre_build_image: true
+    networks:
+      - name: splunk-test-network
+    ports:
+      - "2222:22"    # SSH for git
+      - "8929:8929"  # Web interface
+    volumes:
+      - gitea-data:/data:rw
+      - ssh-keys:/shared/ssh_keys:rw
+    groups:
+      - git_server
+
+provisioner:
+  name: ansible
+  inventory:
+    host_list:
+      - inventory/
+
+verifier:
+  name: ansible
+
+scenario:
+  # Pure container creation mode - no convergence
+  destroy_sequence:
+    - cleanup
+  create_sequence:
+    - dependency
+    - create
+  converge_sequence:
+    - dependency
+    - create
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - create
