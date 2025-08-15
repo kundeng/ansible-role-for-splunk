@@ -41,7 +41,7 @@ setup: install-deps build-images
     @echo "  just test        # Run full test suite" 
     @echo "  just dev         # Start development environment"
     @echo "  just test-local  # Test GitHub Actions locally"
-    @echo "  just open-xpipe  # Access web interface"
+    @echo "  just open-lab    # Access web lab environment"
 
 # Build all base Docker images
 build-images:
@@ -49,6 +49,7 @@ build-images:
     docker build -t splunk-base-almalinux9:latest {{docker_images_dir}}/almalinux9-systemd-sshd/
     docker build -t splunk-base-ubuntu2204:latest {{docker_images_dir}}/ubuntu2204-systemd-sshd/
     docker build -t splunk-git-server:latest {{docker_images_dir}}/gitlab/
+    docker build -t ansible-controller:latest {{docker_images_dir}}/ansible-controller/
     @echo "✅ All images built successfully!"
 
 # Build individual images
@@ -185,10 +186,15 @@ status:
     @echo "📊 Container status:"
     docker ps -a --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}\t{{ '{{' }}.Ports{{ '}}' }}"
 
-# Open XPipe web interface
-open-xpipe:
-    @echo "🌐 Opening XPipe web interface..."
+# Open Webtop lab environment 
+open-lab:
+    @echo "🌐 Opening Splunk Lab Controller (Webtop + XPipe)..."
+    @echo "Primary:   http://localhost:3000"
+    @echo "Secondary: http://localhost:3001"
     open http://localhost:3000
+
+# Legacy alias for open-lab
+open-xpipe: open-lab
 
 # Show logs for specific container
 logs container:

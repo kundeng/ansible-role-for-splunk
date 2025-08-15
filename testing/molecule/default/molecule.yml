@@ -7,22 +7,26 @@ driver:
     ansible_connection: docker
 
 platforms:
-  # Ansible Controller with XPipe (disabled - image not available)
-  # - name: ansible-controller
-  #   image: ansible-controller:latest
-  #   privileged: false
-  #   networks:
-  #     - name: splunk-test-network
-  #   ports:
-  #     - "3000:3000"  # XPipe Web Desktop
-  #     - "3001:3001"  # XPipe Web Desktop (alternative)
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock:rw
-  #     - molecule-data:/ansible-workspace:rw
-  #   environment:
-  #     PUID: 1000
-  #     PGID: 1000
-  #     TZ: America/New_York
+  # Ansible Controller with Webtop + XPipe for lab management
+  - name: ansible-controller
+    image: ansible-controller:latest
+    privileged: false
+    networks:
+      - name: splunk-test-network
+    ports:
+      - "3000:3000"  # Webtop Web Desktop
+      - "3001:3001"  # Webtop Web Desktop (alternative)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ssh-keys:/shared/ssh_keys:ro
+      - ${MOLECULE_PROJECT_DIRECTORY}:/workspace:ro
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: America/New_York
+      TITLE: "Splunk Lab Controller"
+    groups:
+      - ansible_controller
 
   # Core cluster infrastructure
   - name: splunk-master
