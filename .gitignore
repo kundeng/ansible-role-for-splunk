@@ -1,2 +1,5 @@
 environments/test
 roles/splunk/files/*.lic
+
+# Environment variables
+.env

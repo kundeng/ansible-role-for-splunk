@@ -16,7 +16,8 @@ RUN (cd /lib/systemd/system/sysinit.target.wants/; for i in *; do \
 RUN mkdir /var/run/sshd && \
     ssh-keygen -A && \
     echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config && \
-    sed -i 's/^UsePAM no$/#UsePAM no/' /etc/ssh/sshd_config
+    sed -i 's/^UsePAM no$/#UsePAM no/' /etc/ssh/sshd_config && \
+    sed -i 's/session\s*required\s*pam_loginuid.so/session optional pam_loginuid.so/g' /etc/pam.d/sshd
 
 RUN useradd -m -s /bin/bash ansible && \
     echo 'ansible:ansible' | chpasswd && \

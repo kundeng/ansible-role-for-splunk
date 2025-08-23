@@ -1,0 +1,209 @@
+---
+# Bootstrap Lab Infrastructure Preparation
+# Sets up SSH connectivity and basic infrastructure for all lab containers
+
+- name: Bootstrap Splunk Lab Infrastructure  
+  hosts: all:!git_server:!jumpbox
+  gather_facts: true
+  tasks:
+    - name: Wait for systemd to be ready
+      wait_for:
+        path: /run/systemd/system
+      when: ansible_service_mgr == "systemd" and inventory_hostname != 'ansible-controller'
+
+    - name: Generate SSH key pair for inter-container communication
+      openssh_keypair:
+        path: /tmp/id_rsa
+        type: rsa
+        size: 2048
+        comment: "splunk-test-cluster"
+        force: true
+        mode: '0644'
+      run_once: true
+      delegate_to: ansible-controller
+
+    - name: Set up SSH infrastructure for all Splunk hosts
+      block:
+        - name: Ensure SSH server is installed and enabled
+          systemd:
+            name: "{{ 'sshd' if ansible_os_family == 'RedHat' else 'ssh' }}"
+            state: started
+            enabled: true
+
+        - name: Create ansible user with sudo privileges
+          user:
+            name: ansible
+            groups: "{{ 'wheel' if ansible_os_family == 'RedHat' else 'sudo' }}"
+            append: true
+            create_home: true
+            shell: /bin/bash
+            password: "{{ 'ansible' | password_hash('sha512') }}"
+
+        - name: Unlock ansible user account (required for RedHat/AlmaLinux)
+          command: passwd -u -f ansible
+          when: ansible_os_family == 'RedHat'
+          changed_when: false
+
+        - name: Configure sudo for ansible user (no password required)
+          copy:
+            content: |
+              ansible ALL=(ALL) NOPASSWD:ALL
+            dest: /etc/sudoers.d/ansible
+            mode: '0440'
+
+        - name: Enable user sessions for SSH login
+          systemd:
+            name: systemd-user-sessions
+            state: started
+            enabled: true
+
+        - name: Create ansible user SSH directory
+          file:
+            path: /home/ansible/.ssh
+            state: directory
+            owner: ansible
+            group: ansible
+            mode: '0700'
+
+        - name: Fetch SSH public key from ansible-controller
+          slurp:
+            src: /tmp/id_rsa.pub
+          register: ssh_public_key_result
+          delegate_to: ansible-controller
+
+        - name: Fetch SSH private key from ansible-controller
+          slurp:
+            src: /tmp/id_rsa
+          register: ssh_private_key_result
+          delegate_to: ansible-controller
+
+        - name: Copy SSH public key to authorized_keys
+          copy:
+            content: "{{ ssh_public_key_result.content | b64decode }}"
+            dest: /home/ansible/.ssh/authorized_keys
+            owner: ansible
+            group: ansible
+            mode: '0600'
+
+        - name: Copy SSH private key for ansible user
+          copy:
+            content: "{{ ssh_private_key_result.content | b64decode }}"
+            dest: /home/ansible/.ssh/id_rsa
+            owner: ansible
+            group: ansible
+            mode: '0600'
+
+        - name: Configure SSH client settings
+          blockinfile:
+            path: /home/ansible/.ssh/config
+            create: true
+            owner: ansible
+            group: ansible
+            mode: '0600'
+            block: |
+              Host *
+                StrictHostKeyChecking no
+                UserKnownHostsFile /dev/null
+                LogLevel ERROR
+
+        - name: Create test data directories
+          file:
+            path: "{{ item }}"
+            state: directory
+            mode: '0755'
+          loop:
+            - /var/log/test-data
+            - /tmp/test-logs
+          when: inventory_hostname in groups['uf']
+
+      when: inventory_hostname != 'ansible-controller'
+
+    - name: Configure Ansible Controller
+      block:
+        - name: Create workspace SSH directory
+          file:
+            path: /workspace/.ssh
+            state: directory
+            mode: '0700'
+            
+        - name: Copy SSH keys to ansible-controller workspace
+          copy:
+            src: "{{ item.src }}"
+            dest: "{{ item.dest }}"
+            mode: "{{ item.mode }}"
+            remote_src: true
+          loop:
+            - { src: /tmp/id_rsa, dest: /workspace/.ssh/id_rsa, mode: '0600' }
+            - { src: /tmp/id_rsa.pub, dest: /workspace/.ssh/id_rsa.pub, mode: '0644' }
+
+        - name: Create ansible controller SSH config
+          copy:
+            content: |
+              Host *
+                StrictHostKeyChecking no
+                UserKnownHostsFile /dev/null
+                LogLevel ERROR
+            dest: /workspace/.ssh/config
+            mode: '0600'
+
+        - name: Create ansible inventory for SSH testing
+          copy:
+            content: |
+              [clustermanager]
+              splunk-master ansible_host=splunk-master
+
+              [licensemaster]
+              splunk-license ansible_host=splunk-license
+
+              [deploymentserver]
+              splunk-fwdmanager ansible_host=splunk-fwdmanager
+
+              [indexer]
+              splunkapp-prod01 ansible_host=splunkapp-prod01
+              splunkapp-prod02 ansible_host=splunkapp-prod02
+
+              [shcluster] 
+              splunkshc-prod01 ansible_host=splunkshc-prod01
+              splunkshc-prod02 ansible_host=splunkshc-prod02
+
+              [shdeployer]
+              splunk-deploy ansible_host=splunk-deploy
+
+              [uf]
+              splunk-uf01 ansible_host=splunk-uf01
+
+              [all:vars]
+              ansible_user=ansible
+              ansible_ssh_private_key_file=/workspace/.ssh/id_rsa
+              ansible_ssh_common_args=-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+            dest: /workspace/inventory.ini
+            mode: '0644'
+
+        - name: Start web terminal service
+          shell: nohup wetty --port 3000 --host 0.0.0.0 >/dev/null 2>&1 &
+
+      when: inventory_hostname == 'ansible-controller'
+
+- name: Bootstrap Git Server
+  hosts: git_server  
+  gather_facts: false  # Git server doesn't need Python3/Ansible management
+  connection: docker   # Use docker connection, not SSH
+  tasks:
+    - name: Check Gitea container is running (no Python3 needed)
+      raw: "echo 'Git server container running - Gitea will auto-start'"
+      
+    - name: Create test repositories (placeholder)
+      raw: "echo 'Gitea ready for app repository testing'"
+
+- name: Bootstrap Remote.it Jumpbox
+  hosts: jumpbox
+  gather_facts: false  # Jumpbox doesn't need Ansible management  
+  connection: docker   # Use docker connection, not SSH
+  tasks:
+    - name: Wait for Remote.it jumpbox initialization (it may take time)
+      raw: "sleep 10 && echo 'Remote.it jumpbox initializing - check logs with: docker logs remoteit-jumpbox'"
+      ignore_errors: true
+      
+    - name: Check Remote.it jumpbox status
+      raw: "ps aux | grep -v grep | grep -i remote || echo 'Remote.it processes starting up...'"
+      ignore_errors: true

@@ -15,7 +15,7 @@ This framework serves multiple use cases:
 
 ## 🏗️ Architecture
 
-### Complete Splunk Cluster (10 containers):
+### Complete Splunk Cluster (12 containers):
 - **Cluster Manager** (`splunk-master`) - Manages indexer cluster
 - **License Master + DMC** (`splunk-license`) - Licensing and monitoring
 - **Deployment Server** (`splunk-fwdmanager`) - App distribution to forwarders
@@ -23,60 +23,69 @@ This framework serves multiple use cases:
 - **2x Search Heads** (`splunkshc-prod01/02`) - Search head cluster
 - **SH Deployer** (`splunk-deploy`) - App deployment to search heads
 - **Universal Forwarder** (`splunk-uf01`) - Data collection
-- **GitLab** (`gitlab`) - Internal git server for app deployment testing
+- **Git Server** (`git-server`) - Gitea lightweight git server for app deployment testing
 
-### Management Layer:
-- **XPipe Controller** - Web-based connection manager and terminal interface
+### Management & Access Layer:
+- **Ansible Controller** (`ansible-controller`) - Web terminal and deployment control
+- **Remote.it Jumpbox** (`remoteit-jumpbox`) - External secure access gateway
 - **Persistent Volumes** - Maintains state across container restarts
 - **Docker Networking** - Full connectivity between all components
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Docker with 64GB+ RAM allocated
-- 16+ CPU cores recommended  
-- [just](https://github.com/casey/just) command runner
+- Docker with 32GB+ RAM allocated (64GB+ recommended)
+- 8+ CPU cores (16+ recommended)  
+- [Task](https://taskfile.dev) command runner
 
-### One-Command Setup
+### Setup Process
 ```bash
 git clone <this-repo>
 cd ansible-role-for-splunk
-just setup              # Install dependencies + build images
+
+# Copy environment template and configure
+cp .env.example .env
+# Edit .env and add your Remote.it registration code
+
+task setup              # Install dependencies + build images
 ```
+
+**Required Environment Variables:**
+- `R3_REGISTRATION_CODE` - Get your free registration code from [remote.it](https://remote.it)
 
 ## 🛠️ Usage
 
 ### Development Lab Environment
 ```bash
-just dev                # Start persistent Splunk lab
-just open-xpipe         # Access web management interface
-just status             # Check container states
+task bootstrap-create   # Create lab infrastructure
+task bootstrap-prepare  # Setup SSH connectivity  
+task status             # Check container states
 ```
 
 ### Testing Workflows  
 ```bash
-just test               # Full role test suite
-just test-local         # Test GitHub Actions locally (with act)
-just quick-test         # Fast development validation
+task deploy-splunk      # Deploy Splunk via SSH (production-like)
+task verify-deployment  # Verify Splunk cluster formation
+task quick-test         # Fast development validation
 ```
 
 ### Container Management
 ```bash
-just logs splunk-master      # View specific container logs
-just shell splunk-master     # Shell into container
-just destroy                 # Clean up all containers
-just reset                   # Complete environment reset
+task logs <container>        # View specific container logs
+task shell <container>       # Shell into container
+task destroy-containers      # Clean up all containers
+task reset                   # Complete environment reset
 ```
 
-## 🌐 XPipe Web Interface
+## 🌐 Web Terminal Interface
 
-Access the management interface at `http://localhost:3000`:
+Access the web terminal at `http://localhost:3000/wetty`:
 
-- **Connection Manager** - Visual overview of all Splunk instances
-- **Multiple Terminals** - Concurrent SSH sessions to different components
-- **File Browser** - Navigate and edit configurations across the cluster
+- **Terminal Access** - Direct shell access to ansible-controller
+- **SSH Connectivity** - All Splunk containers accessible via SSH
+- **File Navigation** - Browse and edit configurations across the cluster
 - **Persistent Sessions** - Connections survive browser refreshes
-- **Git Sync** - Share connection configurations with team
+- **Ansible Environment** - Pre-configured with ansible-role-for-splunk
 
 ## 🧪 Testing Scenarios
 
