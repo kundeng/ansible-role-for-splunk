@@ -1,0 +1,233 @@
+# Splunk Testing Framework Task Runner
+# Architecture: 2-phase testing with bootstrap infrastructure + Splunk role testing
+# Requirements: Docker only (all tools containerized)
+
+version: '3'
+
+env:
+  R3_REGISTRATION_CODE:
+    sh: |
+      if [ -f .env ]; then
+        grep "^R3_REGISTRATION_CODE=" .env | cut -d= -f2- | tr -d '"' 2>/dev/null || echo ""
+      else
+        echo ""
+      fi
+
+vars:
+  PROJECT_ROOT: '{{.USER_WORKING_DIR}}/..'
+  DOCKER_IMAGES_DIR: '{{.USER_WORKING_DIR}}/docker-images'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  # === SETUP ===
+  
+  setup:
+    desc: Build all Docker images required for testing
+    cmds:
+      - echo "🔧 Building Splunk testing framework images..."
+      - docker build -t splunk-base-almalinux9:latest {{.DOCKER_IMAGES_DIR}}/almalinux9-systemd-sshd/
+      - docker build -t splunk-base-ubuntu2204:latest {{.DOCKER_IMAGES_DIR}}/ubuntu2204-systemd-sshd/
+      - docker build -t splunk-git-server:latest {{.DOCKER_IMAGES_DIR}}/gitlab/
+      - docker build -t ansible-webterminal:latest {{.DOCKER_IMAGES_DIR}}/ansible-webterminal/
+      - docker build -t molecule-runner:latest {{.DOCKER_IMAGES_DIR}}/molecule-runner/
+      - echo "✅ All images built successfully!"
+      - echo ""
+      - echo "Next steps:"
+      - echo "  task lab         # Create lab infrastructure"
+      - echo "  task test        # Test Splunk role deployment"
+
+  # === LAB MANAGEMENT ===
+
+  lab:
+    desc: Create and setup complete lab infrastructure (12 containers)
+    cmds:
+      - echo "🏗️  Creating complete lab infrastructure..."
+      - |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          -e R3_REGISTRATION_CODE={{.R3_REGISTRATION_CODE}} \
+          molecule-runner:latest \
+          molecule test -s lab
+      - echo "✅ Lab infrastructure ready!"
+      - echo ""
+      - echo "Access lab:"
+      - 'echo "  http://localhost:3000/wetty  # Web terminal"'
+
+  lab-create:
+    desc: Create lab containers and setup SSH keys
+    cmds:
+      - echo "📦 Creating lab containers..."
+      - |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -v ssh-keys:/shared/ssh_keys:rw \
+          -w /workspace/testing \
+          -e R3_REGISTRATION_CODE={{.R3_REGISTRATION_CODE}} \
+          molecule-runner:latest \
+          molecule create -s lab
+
+  lab-destroy:
+    desc: Destroy lab infrastructure
+    cmds:
+      - echo "💥 Destroying lab infrastructure..."
+      - |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          molecule-runner:latest \
+          molecule destroy -s lab
+
+  # === DAY 0 - PROVISIONING ===
+
+  day0:
+    desc: Day 0 - Deploy Splunk via SSH (initial provisioning)
+    cmds:
+      - 'echo "🚀 Day 0: Deploying Splunk (initial provisioning)..."'
+      - |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          molecule-runner:latest \
+          molecule converge -s day0
+      - 'echo "✅ Day 0 provisioning complete!"'
+
+  day0-deploy:
+    desc: Day 0 - Deploy Splunk role directly via ansible-playbook (assumes lab exists)
+    cmds:
+      - 'echo "🚀 Day 0: Deploying Splunk via ansible-playbook..."'
+      - |
+        docker run --rm \
+          --network splunk-test-network \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -v ssh-keys:/shared/ssh_keys:ro \
+          -w /workspace \
+          molecule-runner:latest \
+          ansible-playbook \
+            -i testing/molecule/inventory/hosts.yml \
+            playbooks/splunk_install_or_upgrade.yml
+
+  day0-verify:
+    desc: Day 0 - Verify Splunk deployment only
+    cmds:
+      - 'echo "🔍 Day 0: Verifying Splunk deployment..."'
+      - |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          molecule-runner:latest \
+          molecule verify -s day0
+
+  # === DAY 1 - OPERATIONS ===
+
+  day1:
+    desc: Day 1 - Operational tasks on running Splunk cluster
+    cmds:
+      - 'echo "🔧 Day 1: Running operational tasks..."'
+      - |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          molecule-runner:latest \
+          molecule test -s day1
+      - 'echo "✅ Day 1 operations complete!"'
+
+  # === WORKFLOWS ===
+
+  full-test:
+    desc: Complete end-to-end test (lab + day0 + day1)
+    cmds:
+      - task: lab
+      - task: day0
+      - task: day1
+      - echo "🎉 Complete end-to-end testing finished!"
+
+  provision:
+    desc: Complete provisioning workflow (lab + day0)
+    cmds:
+      - task: lab
+      - task: day0
+      - echo "🎉 Complete provisioning finished!"
+
+  dev:
+    desc: Start development environment (lab + web terminal access)
+    cmds:
+      - task: lab
+      - echo "🚀 Development environment ready!"
+      - echo ""
+      - echo "Development workflow:"
+      - 'echo "  1. Access: http://localhost:3000/wetty"'
+      - 'echo "  2. Edit Splunk role in ../roles/splunk/"'
+      - 'echo "  3. Test: task day0-deploy"'
+      - 'echo "  4. Verify: task day0-verify"'
+      - 'echo "  5. Operations: task day1"'
+
+  # === UTILITIES ===
+
+  status:
+    desc: Show container status
+    cmds:
+      - echo "📊 Container Status:"
+      - docker ps -a | grep -E "(CONTAINER|splunk|ansible|git-server|remoteit)" || echo "No containers found"
+
+  logs:
+    desc: Show logs for container (usage - task logs -- container-name)
+    cmds:
+      - 'docker logs {{.CLI_ARGS}}'
+
+  shell:
+    desc: Shell into container (usage - task shell -- container-name) 
+    cmds:
+      - 'docker exec -it {{.CLI_ARGS}} /bin/bash'
+
+  reset:
+    desc: Clean reset (destroy everything + Docker cleanup)
+    cmds:
+      - task: lab-destroy
+      - echo "🧹 Cleaning Docker resources..."
+      - docker system prune -f
+      - docker volume prune -f
+      - echo "✅ Clean reset complete!"
+
+  # === DEV UTILITIES ===
+
+  molecule-shell:
+    desc: "[DEV] Interactive shell in molecule-runner container"
+    cmds:
+      - |
+        docker run --rm -it \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          molecule-runner:latest \
+          /bin/bash
+
+  verify-ssh:
+    desc: "[DEV] Test SSH connectivity between containers"
+    cmds:
+      - echo "🔍 Testing SSH connectivity..."
+      - |
+        docker run --rm \
+          --network splunk-test-network \
+          -v ssh-keys:/shared/ssh_keys:ro \
+          alpine:latest \
+          sh -c 'apk add --quiet --no-cache openssh-client && \
+          for container in splunk-master splunk-license splunkapp-prod01 splunkshc-prod01; do \
+              printf "Testing $$container: "; \
+              if timeout 5 ssh -i /shared/ssh_keys/id_rsa -o StrictHostKeyChecking=no ansible@$$container "echo OK" 2>/dev/null; then \
+                  echo "✅"; \
+              else \
+                  echo "❌"; \
+              fi; \
+          done'

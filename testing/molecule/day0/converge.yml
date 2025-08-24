@@ -1,0 +1,5 @@
+---
+# Molecule converge playbook
+# Uses the production operational playbook without modification
+
+- import_playbook: ../../../playbooks/splunk_install_or_upgrade.yml

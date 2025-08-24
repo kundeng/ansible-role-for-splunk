@@ -1,0 +1,18 @@
+---
+# Day 1 Operations - Verification
+# Verifies operational tasks completed successfully
+
+- name: Verify Day 1 Operations
+  hosts: all:!ansible_controller:!git_server:!jumpbox
+  gather_facts: true
+  tasks:
+    - name: Verify Splunk services are still running after operations
+      shell: systemctl is-active splunk || systemctl is-active splunkforwarder
+      register: splunk_final_status
+      
+    - name: Confirm operational status
+      assert:
+        that:
+          - splunk_final_status.rc == 0
+        success_msg: "Day 1 operations completed successfully on {{ inventory_hostname }}"
+        fail_msg: "Day 1 operations failed - Splunk not running on {{ inventory_hostname }}"

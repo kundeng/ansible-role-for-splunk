@@ -1,0 +1,40 @@
+---
+# Day 1 - Splunk Operations Scenario
+# Operational tasks on running Splunk cluster (restart, backup, maintenance)
+# Assumes day0 provisioning already completed and Splunk is running
+
+driver:
+  name: docker
+
+platforms: []  # No platforms - operates on existing containers
+
+dependency:
+  name: shell
+  command: echo "Day 1 operations assume existing lab infrastructure and day0 deployment"
+
+provisioner:
+  name: ansible
+  inventory:
+    host_list:
+      - ../inventory/
+  config_options:
+    defaults:
+      host_key_checking: False
+      remote_user: ansible
+
+verifier:
+  name: ansible
+
+scenario:
+  # Day 1 operations workflow
+  destroy_sequence:
+    - cleanup
+  create_sequence:
+    - dependency
+  converge_sequence:
+    - dependency
+    - converge
+  test_sequence:
+    - dependency
+    - converge
+    - verify

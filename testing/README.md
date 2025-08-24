@@ -36,46 +36,61 @@ This framework serves multiple use cases:
 ### Prerequisites
 - Docker with 32GB+ RAM allocated (64GB+ recommended)
 - 8+ CPU cores (16+ recommended)  
-- [Task](https://taskfile.dev) command runner
+- [Task](https://taskfile.dev) command runner (installed automatically)
 
 ### Setup Process
 ```bash
 git clone <this-repo>
-cd ansible-role-for-splunk
+cd ansible-role-for-splunk/testing
 
-# Copy environment template and configure
+# Copy environment template and configure (optional)
 cp .env.example .env
-# Edit .env and add your Remote.it registration code
+# Edit .env and add your Remote.it registration code if needed
 
-task setup              # Install dependencies + build images
+task setup              # Build all Docker images
 ```
 
-**Required Environment Variables:**
-- `R3_REGISTRATION_CODE` - Get your free registration code from [remote.it](https://remote.it)
+**Optional Environment Variables:**
+- `R3_REGISTRATION_CODE` - Get your free registration code from [remote.it](https://remote.it) for external access
 
 ## 🛠️ Usage
 
-### Development Lab Environment
+### ✅ Current Working Commands (Sprint 3 Complete)
 ```bash
-task bootstrap-create   # Create lab infrastructure
-task bootstrap-prepare  # Setup SSH connectivity  
-task status             # Check container states
+task lab-create         # Create 12-container lab infrastructure + SSH setup
+task day0-deploy        # Deploy Splunk via SSH (connectivity verified)  
+task status            # Show all container status
+task lab-destroy       # Clean shutdown
 ```
 
-### Testing Workflows  
+### 🔄 Lab Infrastructure Management
 ```bash
-task deploy-splunk      # Deploy Splunk via SSH (production-like)
-task verify-deployment  # Verify Splunk cluster formation
-task quick-test         # Fast development validation
+task lab-create         # Create containers and setup SSH connectivity
+task lab-destroy        # Destroy lab infrastructure
+task status            # Show container status and health
+task reset             # Full cleanup (containers + volumes + networks)
 ```
 
-### Container Management
+### 🚀 Day 0 - Splunk Provisioning (SSH Architecture Working ✅)
 ```bash
-task logs <container>        # View specific container logs
-task shell <container>       # Shell into container
-task destroy-containers      # Clean up all containers
-task reset                   # Complete environment reset
+task day0-deploy        # Deploy Splunk role via SSH to existing lab
+task day0-verify        # Verify Splunk deployment (planned)
 ```
+
+### 🔧 Day 1 - Operations (Planned Sprint 4)
+```bash
+task day1               # Operational tasks on running cluster (planned)
+```
+
+### 🛠️ Development Utilities
+```bash
+task build-images       # Build all Docker base images
+task logs -- <container>    # View container logs
+task shell -- <container>   # Shell into container
+task verify-ssh         # Test SSH connectivity between containers
+```
+
+**Current Status:** SSH architecture fixed, 12-container lab creation working, ready for Splunk role integration.
 
 ## 🌐 Web Terminal Interface
 
@@ -89,20 +104,43 @@ Access the web terminal at `http://localhost:3000/wetty`:
 
 ## 🧪 Testing Scenarios
 
-### Role Development Testing
-1. Make changes to the ansible-role-for-splunk
-2. Run `just dev` to apply changes to lab environment
-3. Use XPipe to verify cluster formation, app deployment, etc.
-4. Run `just test` for full validation
-
-### Local CI/CD Testing  
+### ✅ Current Working Workflow (Sprint 3)
 ```bash
-just test-local         # Runs the same tests as GitHub Actions
+# Step 1: Create lab infrastructure with SSH connectivity
+task lab-create         # Creates 12 containers + SSH keys ✅
+
+# Step 2: Deploy Splunk (SSH connectivity verified, role integration pending)
+task day0-deploy        # SSH works, Splunk deployment needs role fixes
+
+# Step 3: Check status
+task status            # All containers running properly ✅
 ```
 
-### Production-Like Validation
+### 🎯 Planned Sprint 4 Workflow 
 ```bash
-just prod-test          # Full reset + comprehensive testing
+# Complete development workflow (planned)
+task lab-create         # Create lab infrastructure
+task day0-deploy        # Deploy Splunk via SSH (fix role prerequisites)  
+task day0-verify        # Verify Splunk deployment health
+task day1               # Operations testing (restart, backup, maintenance)
+
+# Full end-to-end testing (planned)
+task full-test          # Complete automated test suite
+```
+
+### Current Development Iteration
+```bash
+# Working development cycle
+task lab-create         # Create fresh lab environment  
+task day0-deploy        # Test SSH connectivity to all hosts ✅
+task status            # Verify all containers healthy ✅
+task lab-destroy       # Clean shutdown ✅
+
+# Sprint 4: Role integration testing (planned)
+# - Fix acl package installation 
+# - Fix sudo configuration
+# - Complete Splunk deployment testing
+# - Add verification and operations testing
 ```
 
 ## 📊 Resource Requirements
@@ -120,39 +158,59 @@ just prod-test          # Full reset + comprehensive testing
 
 ## 🔧 Advanced Usage
 
-### Custom Scenarios
-Create additional Molecule scenarios in `molecule/` for specific testing:
-- `backup-restore` - Test backup/rollback workflows
-- `upgrade-testing` - Validate upgrade procedures
-- `app-deployment` - Test git-based app deployment
+### 🏗️ SSH Architecture (Sprint 3 Achievement)
+**Problem Solved:** SSH keys are now generated in molecule-runner and distributed properly to all containers.
 
-### Environment Persistence
+**Technical Details:**
+- SSH keys: Generated on `localhost` (molecule-runner) via `delegate_to: localhost`
+- Key distribution: Ansible copy from localhost to containers via shared volume
+- Connectivity: SSH working from molecule-runner to all 12 Splunk containers
+- Network: Docker hostname resolution enabling realistic SSH-based testing
+
+### 📁 Scenario Structure (Current Working)
+```
+molecule/
+├── inventory/           # Shared inventory drives all scenarios
+│   ├── hosts.yml       # Infrastructure specification
+│   └── group_vars/     # SSH configuration overrides
+├── lab/                # Container creation + SSH setup ✅
+├── day0/               # Splunk provisioning (SSH working) ✅  
+└── day1/               # Operations (planned Sprint 4)
+```
+
+### 🎯 Sprint 4 Planning - Splunk Role Integration
+**Current Issues to Fix:**
+- git-server SSH configuration (exclude from `all` group or fix SSH)
+- acl package installation across different OS distributions
+- sudo configuration for ansible user
+- Splunk role prerequisites validation
+
+### Environment Persistence  
 The lab environment persists data between runs:
-- Splunk configurations and apps
-- Indexed data and search artifacts
-- User accounts and permissions
-- Custom configurations and modifications
+- SSH keys in shared volume (working ✅)
+- Splunk configurations and data (planned)
+- Container networking and hostname resolution (working ✅)
 
-### Integration with Production
+### Integration Testing
 Use this environment to:
-- Test configuration changes before production deployment
-- Reproduce production issues safely
-- Train team members on cluster operations
-- Validate new app deployments
+- Test ansible-role-for-splunk changes with SSH connectivity ✅
+- Validate deployment across multiple OS distributions
+- Test cluster operations and maintenance procedures (planned)
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Test changes with `just dev` and `just test-local`
-4. Submit pull request (GitHub Actions will validate)
+2. Create a feature branch  
+3. Test SSH connectivity: `task lab-create && task day0-deploy`
+4. Verify changes work across all container types
+5. Submit pull request
 
 ## 📖 Documentation
 
-- [XPipe Documentation](https://docs.xpipe.io/guide/webtop)
+- [CLAUDE.md](../CLAUDE.md) - Complete project documentation and current status
+- [TESTING_PROGRESS.md](TESTING_PROGRESS.md) - Sprint progress and technical achievements  
 - [Molecule Testing Guide](https://ansible.readthedocs.io/projects/molecule/)
-- [Ansible Role for Splunk](https://github.com/splunk/ansible-role-for-splunk)
 
 ---
 
-**This framework transforms ansible-role-for-splunk testing from a development task into a comprehensive Splunk learning and experimentation platform.**
+**Status: SSH Architecture Fixed ✅ - Ready for Splunk Role Integration**

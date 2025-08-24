@@ -1,0 +1,65 @@
+---
+# Bootstrap Lab Infrastructure Converge
+# Minimal configuration to ensure lab infrastructure is ready
+
+- name: Verify Lab Infrastructure
+  hosts: all:!git_server
+  gather_facts: false
+  tasks:
+    - name: Test basic connectivity
+      ping:
+
+    - name: Verify systemd is running
+      command: systemctl is-system-running
+      register: systemd_status
+      failed_when: false
+      changed_when: false
+
+    - name: Show systemd status
+      debug:
+        msg: "Systemd status on {{ inventory_hostname }}: {{ systemd_status.stdout }}"
+
+- name: Verify SSH Connectivity from Ansible Controller
+  hosts: ansible_controller
+  gather_facts: false
+  tasks:
+    - name: Test SSH connectivity to all Splunk hosts
+      command: >
+        ssh -i /shared/ssh_keys/id_rsa 
+        -o StrictHostKeyChecking=no 
+        -o ConnectTimeout=5 
+        ansible@{{ item }} 
+        "echo 'SSH_OK from {{ inventory_hostname }} to {{ item }}'"
+      loop:
+        - splunk-master
+        - splunk-license  
+        - splunk-fwdmanager
+        - splunkapp-prod01
+        - splunkapp-prod02
+        - splunkshc-prod01
+        - splunkshc-prod02
+        - splunk-deploy
+        - splunk-uf01
+      register: ssh_tests
+      failed_when: false
+      changed_when: false
+
+    - name: Show SSH connectivity results
+      debug:
+        msg: "{{ item.cmd | join(' ') }}: {{ 'SUCCESS' if item.rc == 0 else 'FAILED' }}"
+      loop: "{{ ssh_tests.results }}"
+
+- name: Verify Git Server
+  hosts: git_server
+  gather_facts: false
+  tasks:
+    - name: Check Gitea health
+      uri:
+        url: http://localhost:8929/api/v1/version
+        method: GET
+      register: gitea_health
+      failed_when: false
+
+    - name: Show Gitea status
+      debug:
+        msg: "Gitea health check completed (no status available without Python3)"

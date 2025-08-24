@@ -1,0 +1,29 @@
+---
+# Day 1 Operations - Converge
+# Performs operational tasks on running Splunk cluster
+
+- name: Day 1 Splunk Operations
+  hosts: all:!ansible_controller:!git_server:!jumpbox
+  gather_facts: true
+  tasks:
+    - name: Verify Splunk is running before operations
+      shell: systemctl is-active splunk || systemctl is-active splunkforwarder
+      register: splunk_status
+      failed_when: splunk_status.rc != 0
+      
+    - name: Log current Splunk operational status
+      debug:
+        msg: "Splunk service is {{ splunk_status.stdout }} on {{ inventory_hostname }}"
+
+    # Placeholder for operational tasks
+    - name: Placeholder for restart operations
+      debug:
+        msg: "Would perform restart operations on {{ inventory_hostname }}"
+      
+    - name: Placeholder for backup operations  
+      debug:
+        msg: "Would perform backup operations on {{ inventory_hostname }}"
+        
+    - name: Placeholder for health checks
+      debug:
+        msg: "Would perform health checks on {{ inventory_hostname }}"

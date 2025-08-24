@@ -71,8 +71,17 @@ export PATH="/opt/ansible-venv/bin:$PATH"
 # Start SSH daemon in background
 /usr/sbin/sshd -D &
 
-# Switch to ansible user and start wetty with PATH and proper shell
-sudo -u ansible bash -c 'export PATH="/opt/ansible-venv/bin:$PATH"; cd /workspace && /usr/local/bin/wetty --port 3000 --host 0.0.0.0 --command /bin/bash'
+# Start wetty with proper environment
+sudo -u ansible bash -c '
+    export PATH="/opt/ansible-venv/bin:$PATH"
+    export TERM=xterm-256color
+    cd /workspace
+    /usr/local/bin/wetty \
+        --port 3000 \
+        --host 0.0.0.0 \
+        --command "/bin/bash --login" \
+        --base /wetty/
+'
 EOF
 
 RUN chmod +x /startup.sh

@@ -1,0 +1,38 @@
+---
+# Day 0 - Splunk Provisioning Scenario
+# Initial deployment of Splunk via SSH connections (production-like)
+# Assumes lab infrastructure already exists from lab scenario
+
+driver:
+  name: docker
+
+platforms: []  # No platforms - operates on existing lab containers
+
+provisioner:
+  name: ansible
+  inventory:
+    host_list:
+      - ../inventory/
+  config_options:
+    defaults:
+      host_key_checking: False
+      remote_user: ansible
+  ansible_args:
+    - --inventory-file=/tmp/molecule-ansible-inventory
+
+verifier:
+  name: ansible
+
+scenario:
+  # Day 0 operations workflow - assumes lab infrastructure exists
+  destroy_sequence:
+    - cleanup
+  create_sequence:
+    - dependency
+  converge_sequence:
+    - dependency
+    - converge
+  test_sequence:
+    - dependency
+    - converge
+    - verify

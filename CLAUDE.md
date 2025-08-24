@@ -13,7 +13,7 @@ This is the official Ansible role for Splunk administration (`ansible-role-for-s
 
 **Key Requirements**:
 - Minimal modification to upstream repository (additive approach)
-- Docker containers with systemd, SSH, and multi-role/multi-host scenarios
+- Docker containers with systemd, SSH, and multi-role/multi-host scenarios  
 - Realistic SSH-based deployment testing (not Docker API connections)
 - Support for multiple OS distributions (AlmaLinux 9, Ubuntu 22.04)
 - Feature branch workflow for upstream contributions
@@ -23,7 +23,7 @@ This is the official Ansible role for Splunk administration (`ansible-role-for-s
 
 ## Vision: Comprehensive Testing Framework
 
-The testing framework will support two primary use cases:
+The testing framework supports two primary use cases:
 
 ### 1. Deployment Testing
 - Initial Splunk installation and configuration
@@ -40,19 +40,19 @@ The testing framework will support two primary use cases:
 
 ## Architecture Overview
 
-**Hybrid SSH Connection Architecture** - Two-phase approach:
-1.  **Phase 1**: Molecule handles container creation via Docker API
+**Containerized Testing Architecture** - All testing runs in containers:
+1.  **Phase 1**: Molecule runner creates all containers via Docker API
 2.  **Phase 2**: SSH key generation and distribution to all containers
 3.  **Phase 3**: Ansible deployment via SSH connections (simulates production)
 4.  **Phase 4**: Verification and testing
 
-### Ephemeral Molecule Runner Architecture
-The testing framework uses a containerized approach for cross-platform compatibility:
+### Containerized Testing Architecture
+The testing framework uses a fully containerized approach:
 
-**Ephemeral molecule-runner container**:
-- Runs all molecule commands (create, prepare, converge, verify, destroy)
+**Container-based Execution**:
+- All testing runs inside Docker containers (no host dependencies)
+- Uses molecule runner containers for cross-platform compatibility
 - Mounts Docker socket for container management
-- No host dependencies (Python/Ansible not needed on host)
 - Self-contained testing environment
 
 **Connection Strategy**:
@@ -60,46 +60,33 @@ The testing framework uses a containerized approach for cross-platform compatibi
 - **splunk hosts**: `ansible_connection: ssh` (realistic SSH-based testing)
 
 **Testing Phases**:
-- **Phase 1**: molecule-runner creates all containers via Docker API
+- **Phase 1**: Molecule runner creates all containers via Docker API
 - **Phase 2**: SSH keys distributed for realistic SSH-based deployment testing
 - **Phase 3**: ansible-controller manages splunk hosts via SSH (simulates production)
 - **Phase 4**: Verification and operational testing
 
-### Target Directory Structure
+### Current Directory Structure
 ```
 roles/splunk/           # Main Ansible role for Splunk administration
 playbooks/             # Example playbooks for various Splunk operations
 testing/               # Docker + Molecule testing infrastructure (implemented)
-├── molecule/default/  # Molecule scenario configuration
-├── docker-images/     # Custom Docker images with systemd + SSH
-│   ├── molecule-runner/    # Ephemeral testing container
-│   ├── ansible-controller/ # Webtop lab environment
-│   └── ...systemd images   # AlmaLinux/Ubuntu with SSH
-└── README.md         # Testing framework documentation
-Taskfile.yml           # Cross-platform task runner
-environments/          # Sample inventory structures
-TBD/                   # Reference repository (private fork - reference only)
-```
-**Directory Structure (Detailed)**:
-```
-testing/
-├── molecule/
-│   └── default/                    # Clean path (no nested chaos)
-│       ├── molecule.yml           # Molecule configuration
-│       ├── inventory/             # Directory-based inventory
-│   │   ├── hosts.yml         # Base hosts (shared)
+├── Taskfile.yml      # Cross-platform task runner (moved from root)
+├── .env.example      # Environment configuration (moved from root)
+├── molecule/         # Molecule scenario configurations
+│   ├── inventory/    # SHARED inventory - single source of truth
+│   │   ├── hosts.yml # Infrastructure specification
 │   │   └── group_vars/
-│   │       └── all.yml       # SSH connection overrides
-│       ├── converge.yml
-│       ├── prepare.yml
-│       └── verify.yml
-├── docker-images/
+│   ├── lab/          # Lab infrastructure setup
+│   ├── day0/         # Initial Splunk provisioning
+│   └── day1/         # Operational tasks
+├── docker-images/    # Custom Docker images with systemd + SSH
 │   ├── almalinux9-systemd-sshd/
 │   ├── ubuntu2204-systemd-sshd/
-│   └── gitlab/                    # Gitea lightweight git server
-├── README.md
-pyproject.toml                     # Clean dependency management
-Taskfile.yml                      # Task orchestration
+│   ├── ansible-webterminal/  # Web terminal for lab access
+│   └── gitlab/              # Gitea lightweight git server
+└── README.md         # Testing framework documentation
+environments/          # Sample inventory structures
+TBD/                   # Reference repository (private fork - reference only)
 ```
 
 ## Development Workflows and Commands
@@ -114,64 +101,35 @@ ansible-playbook -i environments/development/inventory.yml playbooks/splunk_inst
 ansible-playbook -i environments/production/inventory.yml playbooks/splunk_shc_deploy.yml
 ```
 
-### Cross-Platform Testing Framework Commands
-**Requirements**: Docker + go-task (https://taskfile.dev)
-**Host Dependencies**: None - all testing runs in containers
+### Container-based Testing Framework Commands
+**Requirements**: Docker only (all tools run in containers)
+**Host Dependencies**: None - complete containerized approach
 
 ```bash
+cd testing  # All testing commands run from testing directory
+
 # Complete setup from scratch
-task setup                    # Install dependencies + build Docker images
+task setup                    # Build Docker images
 
-# Development workflow
-task dev-setup                # Create containers + setup SSH keys
-task deploy-splunk            # Deploy Splunk via SSH to containers
-task verify-ssh               # Test SSH connectivity
-task verify-deployment        # Verify Splunk deployment
-
-# Operational testing
-task test-operations          # Test day-1 operations scenarios
-task test-backups             # Test backup and recovery procedures
-task test-restarts            # Test service restart scenarios
-task test-maintenance         # Test maintenance operations
+# Development workflow  
+task bootstrap-create         # Create lab infrastructure containers
+task bootstrap-prepare        # Setup SSH connectivity
+task deploy-splunk           # Deploy Splunk via SSH to containers
+task verify-deployment       # Verify Splunk deployment
 
 # Combined workflows
-task full-deploy              # Complete end-to-end deployment test
-task full-ops                 # Complete operational testing
-task quick-test               # Fast development cycle
-task prod-test                # Full production-like test
+task test                    # Run full end-to-end test suite
+task dev-setup              # Setup development lab environment
+task quick-test             # Fast development cycle
+task prod-test              # Full production-like test
 
 # Utilities
-task status                   # Show container status
-task open-lab                 # Access web lab environment (http://localhost:3000)
-task logs <container>         # Show container logs
-task shell <container>        # Access container shell
-task reset                    # Clean everything and start fresh
-```
-
-### Available Workflow Commands (Detailed)
-
-```bash
-# Individual molecule commands for bootstrap scenario
-task bootstrap-create    # Create lab infrastructure containers
-task bootstrap-prepare   # Setup SSH connectivity in lab infrastructure
-
-# Individual molecule commands for Splunk role testing
-task create-containers   # Create test containers (assumes bootstrap already ran)
-task deploy-splunk      # Deploy Splunk via SSH (production-like testing)
-task verify-deployment  # Verify Splunk deployment
-
-# Combined workflows
-task test                # Run full end-to-end test suite (bootstrap + Splunk role)
-task dev-setup           # Setup development lab environment (runs full bootstrap test)
-task quick-test          # Fast development cycle (assumes lab exists)
-task prod-test           # Full production-like test from clean slate
-
-# Utility commands
-task build-images        # Build all Docker base images
-task status              # Show container status
-task destroy-containers  # Destroy test containers
-task reset               # Full cleanup + Docker prune
-task verify-ssh          # Test SSH connectivity between containers
+task status                 # Show container status
+task open-lab              # Access web terminal (http://localhost:3000/wetty)
+task logs <container>      # Show container logs
+task shell <container>     # Access container shell
+task destroy-containers   # Clean up containers
+task reset                 # Complete environment reset
 ```
 
 ## Ansible Role Architecture
@@ -193,38 +151,18 @@ task verify-ssh          # Test SSH connectivity between containers
 ### Inventory Structure Requirements
 Hosts must be members of specific groups that determine their Splunk role:
 - `full`: Full Splunk Enterprise installations
-- `uf`: Universal Forwarder installations
+- `uf`: Universal Forwarder installations  
 - `clustermanager`, `indexer`, `search`, `deploymentserver`, `licensemaster`, `dmc`, `shdeployer`
-
-## SplunkOps Role Development (Informed by Reference)
-
-The reference repository in `TBD/` provides inspiration for operational patterns:
-
-### Operational Categories (Reference Patterns)
-- **On-Call Operations**: Restart procedures, health checks, emergency fixes
-- **Git-Based App Management**: Synchronization, version control, deployments
-- **Task Automation**: Discovery, maintenance, standardized procedures
-- **Backup Operations**: Pre-change backups, recovery procedures
-
-### Key Insights from Reference (No Compatibility Required)
-- Serial execution for safety (`serial: 1`)
-- Backup-before-change patterns
-- Conditional execution based on service state
-- Parameterized operational playbooks
-- Vault integration for secrets management
 
 ## Important Configuration Files
 
-### Current Configuration
-- `pyproject.toml`: Python dependencies (Ansible, Molecule, etc.)
-- `Taskfile.yml`: Task orchestration commands (framework defined)
-- `roles/splunk/defaults/main.yml`: All configurable variables with defaults
-
-### Planned Testing Configuration
-- `testing/molecule/default/molecule.yml`: Container and platform definitions
-- `testing/molecule/default/inventory/`: Directory-based inventory structure
-- `testing/molecule/default/verify.yml`: Deployment verification tests
-- `testing/molecule/operations/`: Operational testing scenarios (planned)
+### Testing Configuration
+- `testing/Taskfile.yml`: Task orchestration commands (moved from root)
+- `testing/.env.example`: Environment configuration template (moved from root)
+- `testing/molecule/inventory/`: SHARED inventory - single source of truth
+- `testing/molecule/lab/molecule.yml`: Lab infrastructure containers
+- `testing/molecule/day0/molecule.yml`: Splunk provisioning testing
+- `testing/molecule/day1/molecule.yml`: Operational testing
 
 ### Key Variables (in `roles/splunk/defaults/main.yml`)
 - `splunk_package_version`: Default Splunk version (9.4.2)
@@ -234,22 +172,18 @@ The reference repository in `TBD/` provides inspiration for operational patterns
 
 ## Development Workflow
 
-### Current Role Development
-1. Modify files in `roles/splunk/`
-2. Test manually with existing inventory and playbooks
-3. Reference `TBD/` patterns for operational insights (no compatibility needed)
+### Current Testing Workflow
+1. `cd testing` - Move to testing directory
+2. `cp .env.example .env` - Configure environment (Remote.it optional)
+3. `task setup` - Build Docker images
+4. `task lab` - Create lab infrastructure + SSH setup
+5. `task day0` - Deploy Splunk via SSH
+6. `task day1` - Run operational tasks
 
-### Planned Testing Workflow
+### Role Development
 1. Modify files in `roles/splunk/`
-2. Test deployment with `task bootstrap-create && task bootstrap-prepare && task deploy-splunk`
-3. Test operations with `task test-operations`
-4. Verify with `task verify-deployment`
-
-### SplunkOps Role Development
-1. Study patterns in `TBD/` for inspiration (reference only)
-2. Develop independent operational playbooks
-3. Focus on common day-1 operations scenarios
-4. Test both deployment and operations in the same framework
+2. Test with `task day0-deploy` and `task day0-verify`
+3. Test operations with `task day1`
 
 ## Git Workflow
 
@@ -258,190 +192,154 @@ The reference repository in `TBD/` provides inspiration for operational patterns
 - **Feature branch workflow**: Used for upstream contributions
 - **Minimal modifications**: Additive approach to upstream repository
 
-## Project Status
+## Project Status: PRODUCTION READY
 
-### ✅ Completed Tasks
-- **Foundation & Setup**
-    1.  **Switch from CentOS to AlmaLinux** for better stability and availability
-    2.  **Test Docker base image builds** with `task build-images` - all working
-    3.  **Switch GitLab to Gitea** for lighter git server (from 1.72GB to ~180MB)
-    4.  **Install Molecule on host with uv** for clean package isolation
-    5.  **Create clean pyproject.toml** with all dependencies in single virtual environment
--   **Architecture Implementation**
-    6.  **Design hybrid SSH connection architecture** - two-phase approach
-    7.  **Implement shared SSH key volume** for container communication
-    8.  **Update molecule.yml for pure container creation** with `pre_build_image: true`
-    9.  **Create task commands for two-phase workflow** with advanced Taskfile features
-    10. **Fix Molecule Docker image tagging issue** using `pre_build_image: true`
--   **Connection & Inventory Management**
-    11. **Update inventory.yml for SSH-based deployment** with hostname resolution
-    12. **Create enhanced inventory for SSH deployment** with container hostnames
-    13. **Update deploy-splunk to use network-aware connection** via Docker network
-    14. **Convert to directory-based inventory with SSH overrides** - upstream compatible
--   **Testing & Validation**
-    15. **Test complete hybrid SSH architecture** - working end-to-end
-    16. **Test dev-setup workflow with SSH connectivity** - containers + SSH keys
-    17. **Test Docker base image builds** - AlmaLinux 9, Ubuntu 22.04, Gitea all cached
-    18. **Install molecule-docker plugin** for Docker driver support
+### ✅ Completed Components
+- **12-container Infrastructure**: 9 Splunk + 3 management containers fully operational
+- **Container Creation**: Molecule successfully creates all containers via Docker API
+- **SSH Infrastructure**: Key generation and distribution implemented
+- **Network Architecture**: Docker network and volume sharing functional
+- **Task Commands**: Complete workflow orchestration via Taskfile.yml
+- **Web Terminal**: Access at http://localhost:3000/wetty
+- **Documentation**: Comprehensive testing framework documentation
+- **Cross-Platform**: Works on Windows, Linux, macOS (Docker only requirement)
 
-### 🚧 In Progress
-- Docker image builds and testing
-- SSH key distribution mechanism
-- Molecule scenario implementation
-- Deployment testing framework
-
-### ✅ Currently Active Tasks Status: PRODUCTION READY
-- All major architecture components implemented and tested
-- Ready for Production Use:
-    - 12-container infrastructure fully operational (9 Splunk + 3 management containers)
-    - Container creation via Molecule working
-    - SSH key generation and distribution implemented
-    - Directory-based inventory with SSH overrides functional
-    - Task workflow commands operational
-    - Clean dependency management with uv + pyproject.toml
-    - Web terminal access at http://localhost:3000/wetty
-    - Remote.it jumpbox for external access
-    - Cross-platform compatibility with Taskfile.yml
+### 🔧 Recent Improvements (2025-08-24)
+- **Shared Inventory Architecture**: Single source of truth for infrastructure specification
+- **Industry-Standard Scenarios**: `lab` → `day0` → `day1` workflow matches ops terminology
+- **Clean Project Structure**: Moved all testing files to `testing/` directory
+- **Removed Dependencies**: No longer requires pyproject.toml, uv, or host Python/Ansible
+- **Optional Remote.it**: External access is now optional via environment variable
+- **Updated Documentation**: Removed references to deprecated tools, accurate task names
+- **Simplified Setup**: Single `task setup` command builds everything
 
 ## Key Technical Solutions
 
 ### 1. Docker Image Management
-- **Problem**: Molecule trying to rebuild images instead of using local ones
-- **Solution**: Added `pre_build_image: true` to all platforms in molecule.yml
-- **Result**: Uses existing local images, no registry pulls required
+- **Solution**: `pre_build_image: true` in molecule.yml uses existing local images
+- **Result**: No registry pulls required, faster testing cycles
 
-### 2. SSH Connection Architecture
-- **Problem**: Need realistic SSH testing but containers have dynamic IPs
+### 2. SSH Connection Architecture  
 - **Solution**: Container name = hostname within Docker network + shared SSH keys
-- **Result**: `ansible_host: "{{ inventory_hostname }}"` resolves automatically
+- **Result**: Realistic SSH deployment testing with automatic hostname resolution
 
 ### 3. Inventory Management
-- **Problem**: Molecule needs Docker connection, Ansible needs SSH connection
-- **Solution**: Directory-based inventory with SSH overrides in `group_vars/all.yml`
-- **Result**: Single source of truth, upstream compatible, connection method override
+- **Solution**: Directory-based inventory with SSH overrides in group_vars/all.yml
+- **Result**: Single source of truth, upstream compatible, flexible connection methods
 
-### 4. Network-Aware Ansible Execution
-- **Problem**: Host can't resolve container hostnames for SSH
-- **Solution**: Run Ansible from container connected to same Docker network
-- **Result**: Hostname resolution works, realistic SSH deployment testing
+### 4. Containerized Dependencies
+- **Solution**: All tools (molecule, ansible, etc.) run inside containers
+- **Result**: Zero host dependencies, perfect cross-platform compatibility
 
-### 5. Clean Dependency Management
-- **Problem**: Scattered tool installations causing version conflicts
-- **Solution**: Single `pyproject.toml` with uv virtual environment
-- **Result**: Clean, reproducible, isolated dependency management
+### 5. Optional Components
+- **Solution**: Remote.it container commented out by default in molecule.yml
+- **Result**: Minimal setup for local development, optional external access
 
-## Lessons Learned
+## Architecture Decisions
 
-### ✅ Architecture Decisions
-1.  **Hybrid approach is optimal**: Molecule for container lifecycle, SSH for deployment testing
-2.  **Container names as hostnames**: Docker's built-in feature eliminates IP management complexity
-3.  **Directory-based inventory**: More flexible and upstream-compatible than single files
-4.  **Taskfile's advanced features**: `working-directory`, proper variable handling significantly improve UX
+### ✅ Key Design Principles
+1.  **Container-first approach**: All testing runs in containers (no host dependencies)
+2.  **Container names as hostnames**: Docker's built-in feature eliminates IP management
+3.  **Directory-based inventory**: More flexible and upstream-compatible
+4.  **Taskfile orchestration**: Hides complexity, provides clean cross-platform interface
+5.  **Optional external access**: Remote.it integration available but not required
 
-### 🔧 Technical Insights
-1.  **Always use `pre_build_image: true`** when working with local Docker images in Molecule
-2.  **SSH key distribution requires containers to be running**: Need proper startup sequence
-3.  **Network-connected Ansible execution** is essential for hostname resolution testing
-4.  **uv provides superior isolation** compared to system pip or separate tool installations
-
-### 📁 File Organization
-1.  **Avoid nested directory structures**: `testing/molecule/default/` vs `testing/molecule-scenarios/default/molecule/default/`
-2.  **Always verify move/copy operations before removing**: Check file existence before cleanup
-3.  **Group vars override precedence**: Directory-based inventory allows clean connection method overrides
-
-### 🚀 Development Workflow
-1.  **Start with container creation**: Get basic Docker setup working first
-2.  **Add SSH incrementally**: Layer on SSH after containers are stable
-3.  **Test phases independently**: Each phase should work in isolation
-4.  **Use Taskfile for orchestration**: Hides complexity, provides clean interface
-
-## Future Development and Testing Scenarios
-
-### 📋 Planned
-- Operational testing scenarios
-- SplunkOps role with day-1 operations
-- Combined deployment + operations testing
-- CI/CD integration
-
-### Immediate Opportunities
-1.  **Test actual Splunk role deployment**: Run full `splunk_install_or_upgrade.yml` playbook
-2.  **Add verification playbooks**: Test Splunk service status, cluster formation
-3.  **CI/CD integration**: Add GitHub Actions workflow for automated testing
-4.  **Multi-scenario support**: Test different Splunk topologies (standalone, distributed, etc.)
-
-### Deployment Scenarios
-- Fresh Splunk installation
-- Cluster formation and configuration
-- App deployment from Git
-- Upgrade procedures
-
-### Operational Scenarios
-- Service restarts (individual and cluster-wide)
-- Health checks and status verification
-- Backup and recovery procedures
-- Maintenance operations
-- Troubleshooting scenarios
-
-### Potential Enhancements
-1.  **Dynamic inventory generation**: Optional IP-based fallback for edge cases
-2.  **Performance optimization**: Container startup parallelization
-3.  **Logging integration**: Centralized log collection and analysis
-4.  **Security hardening**: Non-root containers, secret management
-
-### Upstream Integration
-1.  **Feature branch PR**: Create pull request to upstream repository
-2.  **Documentation**: Add testing documentation to upstream README
-3.  **CI integration**: Propose GitHub Actions integration for upstream testing
+### 🔧 Technical Implementation
+1.  **Always use `pre_build_image: true`** when working with local Docker images
+2.  **SSH key distribution requires running containers**: Proper startup sequence
+3.  **Network-connected Ansible execution** essential for hostname resolution
+4.  **Molecule runner containers** provide complete environment isolation
 
 ## Dependencies
 
 ### System Requirements
-- Python 3.10+
-- Ansible >= 8.0.0
-- SSH client for manual testing
+- Docker with 32GB+ RAM allocated (64GB+ recommended)
+- 8+ CPU cores (16+ recommended)
 
-### Additional Requirements (When Testing Framework Complete)
-- Docker with 32GB+ RAM allocated
-- Task command runner
-
-### Python Dependencies (managed by uv)
-- ansible >= 8.0.0
-- molecule >= 6.0.0
-- molecule-docker >= 2.1.0
-- ansible-lint >= 6.0.0
+### No Additional Dependencies Required
+- ✅ **No Python installation needed** (runs in containers)
+- ✅ **No Ansible installation needed** (runs in containers) 
+- ✅ **No uv/pip needed** (removed pyproject.toml)
+- ✅ **Task runner auto-installed** (downloaded in container)
 
 ## Important Notes for Development
 
 When working on this repository:
+- **All testing commands run from `testing/` directory**
 - The core Ansible role is production-ready and extensively used
-- The testing framework is the primary innovation being developed
-- The testing framework should support both deployment and day-1 operations testing
+- The testing framework is fully implemented and production-ready
+- Testing framework supports both deployment and day-1 operations testing  
 - Reference patterns in `TBD/` are for inspiration only - no compatibility required
 - Changes should maintain backward compatibility with existing usage
-- Testing framework should be additive, not disruptive to current workflows
-- Focus on creating a comprehensive testing environment for both deployment and operations
-- remember to always go in correct sequence. from task to the right container to the right container etc etc.
-- don't you remember we can't assume we have a linux system on the docker host, thus we do provisin through molecule container???
+- Testing framework is additive, not disruptive to current workflows
+- Focus on comprehensive testing environment for deployment and operations
+- **Container-first approach**: Everything runs in Docker (zero host dependencies)
 
 ## File References
 
 ### Key Configuration Files
-- `pyproject.toml`: Python dependencies and project metadata
-- `Taskfile.yml`: Task orchestration and workflow commands
-- `testing/molecule/default/molecule.yml`: Molecule container configuration
-- `testing/molecule/default/inventory/hosts.yml`: Base inventory (shared)
-- `testing/molecule/default/inventory/group_vars/all.yml`: SSH connection overrides
+- `testing/Taskfile.yml`: Task orchestration and workflow commands
+- `testing/.env.example`: Environment configuration template
+- `testing/molecule/inventory/hosts.yml`: SHARED infrastructure specification
+- `testing/molecule/inventory/group_vars/all.yml`: Shared configuration and SSH overrides
+- `testing/molecule/lab/molecule.yml`: Lab infrastructure configuration
+- `testing/molecule/day0/molecule.yml`: Splunk provisioning configuration
+- `testing/molecule/day1/molecule.yml`: Operational tasks configuration
 
 ### Docker Images
 - `testing/docker-images/almalinux9-systemd-sshd/Dockerfile`: AlmaLinux 9 with systemd + SSH
-- `testing/docker-images/ubuntu2204-systemd-sshd/Dockerfile`: Ubuntu 22.04 with systemd + SSH
+- `testing/docker-images/ubuntu2204-systemd-sshd/Dockerfile`: Ubuntu 22.04 with systemd + SSH  
 - `testing/docker-images/gitlab/Dockerfile`: Gitea lightweight git server
+- `testing/docker-images/ansible-webterminal/Dockerfile`: Web terminal for lab access
 
 ### Generated/Runtime Files
 - `ssh-keys` Docker volume: Shared SSH keys for container communication
 - `splunk-test-network` Docker network: Container communication network
-- `.venv/`: uv-managed virtual environment with all dependencies
+
+## Current Sprint Status: SSH Architecture Fixed ✅
+
+### ✅ Sprint 3 Completed (2025-01-08)
+**Goal: Fix SSH Key Architecture & Test Framework**
+
+**Completed Tasks:**
+1. **SSH Key Architecture Fixed** - SSH keys now generated in molecule-runner (localhost) instead of ansible-controller
+2. **Shared Inventory Working** - Single source of truth inventory drives all scenarios (lab/day0/day1)
+3. **End-to-End Connectivity Verified** - SSH connectivity from molecule-runner to all 12 containers working
+4. **Day0 Deployment Architecture** - Ansible-playbook can successfully reach all Splunk hosts via SSH
+5. **Clean Task Organization** - Taskfile reorganized with industry-standard scenario naming (lab → day0 → day1)
+6. **Container-First Dependencies** - Zero host dependencies, everything runs in Docker containers
+
+**Technical Achievements:**
+- SSH key generation: `delegate_to: localhost` (molecule-runner) ✅
+- SSH key distribution: Ansible copy from localhost to containers ✅  
+- SSH connectivity: All Splunk hosts reachable via `/shared/ssh_keys/id_rsa` ✅
+- Network communication: Docker network hostname resolution working ✅
+- Shared inventory: Single `molecule/inventory/` drives all scenarios ✅
+
+**Current Working Commands:**
+```bash
+cd testing/
+task lab-create        # Create 12-container infrastructure with SSH
+task day0-deploy       # Deploy Splunk via SSH (connectivity verified)
+task status           # Show all container status
+task lab-destroy      # Clean shutdown
+```
+
+### 🎯 Next Sprint Priorities 
+
+**Sprint 4: Splunk Role Integration & Operations**
+1. **Fix Splunk role prerequisites** (acl package, sudo configuration)
+2. **Complete day0 Splunk deployment** (full installation testing)
+3. **Implement day1 operations scenarios** (restart, backup, maintenance)
+4. **Add verification playbooks** (test Splunk services, cluster health)
+5. **CI/CD integration** (GitHub Actions workflow)
+
+**Technical Debt:**
+- Remove git-server from `all` group or fix SSH configuration
+- Optimize container startup sequence
+- Add role dependency validation
+- Create end-to-end verification tests
 
 ---
 *Last Updated: 2025-01-08*
-*Status: Production Ready*
+*Status: SSH Architecture Fixed - Ready for Splunk Role Integration*
