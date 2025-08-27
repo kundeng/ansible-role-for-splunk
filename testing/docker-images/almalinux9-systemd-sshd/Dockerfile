@@ -24,6 +24,15 @@ RUN useradd -m -s /bin/bash ansible && \
     echo 'ansible ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ansible && \
     chmod 0440 /etc/sudoers.d/ansible
 
+# Use distro-default PAM configuration for sudo
+
+# Relax pam_sepermit in sshd PAM stack to avoid account-phase denial for non-root users in container context
+RUN sed -r -i 's/^account\s+required\s+pam_sepermit\.so/account    optional     pam_sepermit.so/' /etc/pam.d/sshd || true
+
+# Fix systemd to allow unprivileged user login
+# Enable systemd-user-sessions service by creating symlink manually
+RUN ln -sf /usr/lib/systemd/system/systemd-user-sessions.service /etc/systemd/system/multi-user.target.wants/systemd-user-sessions.service
+
 VOLUME ["/sys/fs/cgroup"]
 EXPOSE 22
 STOPSIGNAL SIGRTMIN+3

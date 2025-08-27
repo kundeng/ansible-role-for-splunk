@@ -32,13 +32,12 @@ tasks:
       - docker build -t splunk-base-almalinux9:latest {{.DOCKER_IMAGES_DIR}}/almalinux9-systemd-sshd/
       - docker build -t splunk-base-ubuntu2204:latest {{.DOCKER_IMAGES_DIR}}/ubuntu2204-systemd-sshd/
       - docker build -t splunk-git-server:latest {{.DOCKER_IMAGES_DIR}}/gitlab/
-      - docker build -t ansible-webterminal:latest {{.DOCKER_IMAGES_DIR}}/ansible-webterminal/
       - docker build -t molecule-runner:latest {{.DOCKER_IMAGES_DIR}}/molecule-runner/
       - echo "✅ All images built successfully!"
       - echo ""
       - echo "Next steps:"
-      - echo "  task lab         # Create lab infrastructure"
-      - echo "  task test        # Test Splunk role deployment"
+      - echo "  task lab-create"
+      - echo "  task day0-deploy"
 
   # === LAB MANAGEMENT ===
 
@@ -50,6 +49,7 @@ tasks:
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
           -v {{.PROJECT_ROOT}}:/workspace \
+          -v ssh-keys:/shared/ssh_keys:rw \
           -w /workspace/testing \
           -e R3_REGISTRATION_CODE={{.R3_REGISTRATION_CODE}} \
           molecule-runner:latest \
@@ -95,6 +95,7 @@ tasks:
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
           -v {{.PROJECT_ROOT}}:/workspace \
+          -v ssh-keys:/shared/ssh_keys:ro \
           -w /workspace/testing \
           molecule-runner:latest \
           molecule converge -s day0
@@ -112,9 +113,7 @@ tasks:
           -v ssh-keys:/shared/ssh_keys:ro \
           -w /workspace \
           molecule-runner:latest \
-          ansible-playbook \
-            -i testing/molecule/inventory/hosts.yml \
-            playbooks/splunk_install_or_upgrade.yml
+          bash -c "ansible-galaxy collection install community.general && ansible-playbook -i testing/molecule/inventory/hosts.yml playbooks/splunk_install_or_upgrade.yml"
 
   day0-verify:
     desc: Day 0 - Verify Splunk deployment only
@@ -124,6 +123,7 @@ tasks:
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
           -v {{.PROJECT_ROOT}}:/workspace \
+          -v ssh-keys:/shared/ssh_keys:ro \
           -w /workspace/testing \
           molecule-runner:latest \
           molecule verify -s day0
@@ -223,9 +223,10 @@ tasks:
           -v ssh-keys:/shared/ssh_keys:ro \
           alpine:latest \
           sh -c 'apk add --quiet --no-cache openssh-client && \
+          set -e; \
           for container in splunk-master splunk-license splunkapp-prod01 splunkshc-prod01; do \
-              printf "Testing $$container: "; \
-              if timeout 5 ssh -i /shared/ssh_keys/id_rsa -o StrictHostKeyChecking=no ansible@$$container "echo OK" 2>/dev/null; then \
+              printf "Testing $container: "; \
+              if timeout 10 ssh -i /shared/ssh_keys/id_rsa -o IdentitiesOnly=yes -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ansible@$container "echo OK" 2>/dev/null; then \
                   echo "✅"; \
               else \
                   echo "❌"; \

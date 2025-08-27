@@ -26,7 +26,8 @@ ENV PATH="/root/.local/share/uv/tools/molecule/bin:/root/.local/share/uv/tools/a
 # Install required Ansible collections
 RUN ansible-galaxy collection install community.docker && \
     ansible-galaxy collection install ansible.posix && \
-    ansible-galaxy collection install community.crypto
+    ansible-galaxy collection install community.crypto && \
+    ansible-galaxy collection install community.general
 
 # Create workspace
 WORKDIR /workspace

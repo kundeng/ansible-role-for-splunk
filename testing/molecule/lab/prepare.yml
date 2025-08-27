@@ -11,51 +11,44 @@
         path: /run/systemd/system
       when: ansible_service_mgr == "systemd" and inventory_hostname != 'ansible-controller'
 
-    - name: Generate SSH key pair for inter-container communication
+    - name: Relax PAM account checks on RedHat family (avoid pam_sepermit denials)
+      block:
+        - name: Check if pam_sepermit is present in sshd PAM stack
+          command: awk '/^account\s+required\s+pam_sepermit\.so/ {print; exit 0} END {if (NR==0) exit 1}' /etc/pam.d/sshd
+          register: pam_sepermit_present
+          changed_when: false
+          failed_when: false
+
+        - name: Make pam_sepermit optional (do not hard-fail account phase)
+          replace:
+            path: /etc/pam.d/sshd
+            regexp: '^account\s+required\s+pam_sepermit\.so'
+            replace: 'account    optional     pam_sepermit.so'
+          when: pam_sepermit_present.rc == 0
+      when: ansible_os_family == 'RedHat' and inventory_hostname != 'ansible-controller'
+
+    - name: Generate SSH keypair on molecule-runner (named volume)
       openssh_keypair:
         path: /shared/ssh_keys/id_rsa
         type: rsa
         size: 2048
         comment: "splunk-test-cluster"
-        force: true
         mode: '0600'
+        force: true
       run_once: true
       delegate_to: localhost
 
     - name: Set up SSH infrastructure for all Splunk hosts
       block:
-        - name: Ensure SSH server is installed and enabled
+        - name: Ensure SSH server is running (already configured in Dockerfile)
           systemd:
             name: "{{ 'sshd' if ansible_os_family == 'RedHat' else 'ssh' }}"
             state: started
             enabled: true
+          when: inventory_hostname != 'ansible-controller'
 
-        - name: Create ansible user with sudo privileges
-          user:
-            name: ansible
-            groups: "{{ 'wheel' if ansible_os_family == 'RedHat' else 'sudo' }}"
-            append: true
-            create_home: true
-            shell: /bin/bash
-            password: "{{ 'ansible' | password_hash('sha512') }}"
-
-        - name: Unlock ansible user account (required for RedHat/AlmaLinux)
-          command: passwd -u -f ansible
-          when: ansible_os_family == 'RedHat'
-          changed_when: false
-
-        - name: Configure sudo for ansible user (no password required)
-          copy:
-            content: |
-              ansible ALL=(ALL) NOPASSWD:ALL
-            dest: /etc/sudoers.d/ansible
-            mode: '0440'
-
-        - name: Enable user sessions for SSH login
-          systemd:
-            name: systemd-user-sessions
-            state: started
-            enabled: true
+        # NOTE: ansible user and sudo already configured in Dockerfile base images
+        # No need to recreate user or configure sudo - this was causing PAM conflicts
 
         - name: Create ansible user SSH directory
           file:
@@ -65,30 +58,28 @@
             group: ansible
             mode: '0700'
 
-        - name: Fetch SSH public key from localhost
-          slurp:
-            src: /shared/ssh_keys/id_rsa.pub
-          register: ssh_public_key_result
-          delegate_to: localhost
+    - name: Fetch SSH keys from named volume (run once)
+      slurp:
+        src: "{{ item }}"
+      loop:
+        - /shared/ssh_keys/id_rsa
+        - /shared/ssh_keys/id_rsa.pub
+      register: runner_keys
+      run_once: true
+      delegate_to: localhost
 
-        - name: Fetch SSH private key from localhost
-          slurp:
-            src: /shared/ssh_keys/id_rsa
-          register: ssh_private_key_result
-          delegate_to: localhost
+    - name: Extract runner key contents (run once)
+      set_fact:
+        runner_private_key: "{{ (runner_keys.results | selectattr('item','equalto','/shared/ssh_keys/id_rsa') | first).content | b64decode }}"
+        runner_public_key: "{{ (runner_keys.results | selectattr('item','equalto','/shared/ssh_keys/id_rsa.pub') | first).content | b64decode }}"
+      run_once: true
 
+    - name: Set up SSH infrastructure for all Splunk hosts
+      block:
         - name: Copy SSH public key to authorized_keys
           copy:
-            content: "{{ ssh_public_key_result.content | b64decode }}"
+            content: "{{ runner_public_key }}"
             dest: /home/ansible/.ssh/authorized_keys
-            owner: ansible
-            group: ansible
-            mode: '0600'
-
-        - name: Copy SSH private key for ansible user
-          copy:
-            content: "{{ ssh_private_key_result.content | b64decode }}"
-            dest: /home/ansible/.ssh/id_rsa
             owner: ansible
             group: ansible
             mode: '0600'
@@ -118,8 +109,46 @@
 
       when: inventory_hostname != 'ansible-controller'
 
+    - name: Permit user logins on systemd hosts (clear pam_nologin gate)
+      block:
+        - name: Remove /run/nologin if present
+          file:
+            path: /run/nologin
+            state: absent
+
+        - name: Start systemd-user-sessions (opens user logins)
+          systemd:
+            name: systemd-user-sessions
+            state: started
+            daemon_reload: true
+
+        - name: Enable systemd-user-sessions at boot (ignore if static)
+          systemd:
+            name: systemd-user-sessions
+            enabled: true
+          ignore_errors: true
+      when: ansible_service_mgr == "systemd" and inventory_hostname != 'ansible-controller'
+
     - name: Configure Ansible Controller
       block:
+        - name: Ensure apt cache updated (controller)
+          apt:
+            update_cache: true
+          when: ansible_os_family == 'Debian'
+
+        - name: Install Node.js and npm for wetty
+          apt:
+            name:
+              - nodejs
+              - npm
+            state: present
+          when: ansible_os_family == 'Debian'
+
+        - name: Install wetty globally
+          npm:
+            name: wetty
+            global: true
+            state: present
         - name: Create workspace SSH directory
           file:
             path: /workspace/.ssh
@@ -128,14 +157,13 @@
             
         - name: Copy SSH keys to ansible-controller workspace
           copy:
-            src: "{{ item.src }}"
+            content: "{{ item.content }}"
             dest: "{{ item.dest }}"
             mode: "{{ item.mode }}"
-            remote_src: true
           loop:
-            - { src: /tmp/id_rsa, dest: /workspace/.ssh/id_rsa, mode: '0600' }
-            - { src: /tmp/id_rsa.pub, dest: /workspace/.ssh/id_rsa.pub, mode: '0644' }
-
+            - { content: "{{ runner_private_key }}", dest: /workspace/.ssh/id_rsa, mode: '0600' }
+            - { content: "{{ runner_public_key }}", dest: /workspace/.ssh/id_rsa.pub, mode: '0644' }
+          
         - name: Create ansible controller SSH config
           copy:
             content: |
@@ -145,6 +173,31 @@
                 LogLevel ERROR
             dest: /workspace/.ssh/config
             mode: '0600'
+
+        - name: Create wetty systemd service
+          copy:
+            dest: /etc/systemd/system/wetty.service
+            mode: '0644'
+            content: |
+              [Unit]
+              Description=Wetty web terminal
+              After=network.target ssh.service
+
+              [Service]
+              Type=simple
+              ExecStart=/usr/local/bin/wetty --port 3000 --host 0.0.0.0 --base /wetty/ --command "/bin/bash --login" --working-dir /workspace
+              Restart=on-failure
+              RestartSec=5
+
+              [Install]
+              WantedBy=multi-user.target
+
+        - name: Reload systemd and enable/start wetty
+          systemd:
+            name: wetty
+            state: started
+            enabled: true
+            daemon_reload: true
 
         - name: Create ansible inventory for SSH testing
           copy:
@@ -179,8 +232,7 @@
             dest: /workspace/inventory.ini
             mode: '0644'
 
-        - name: Start web terminal service
-          shell: nohup wetty --port 3000 --host 0.0.0.0 >/dev/null 2>&1 &
+        # Wetty is now managed by systemd on the controller
 
       when: inventory_hostname == 'ansible-controller'
 

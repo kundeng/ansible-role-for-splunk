@@ -25,6 +25,10 @@ RUN useradd -m -s /bin/bash ansible && \
     echo 'ansible ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ansible && \
     chmod 0440 /etc/sudoers.d/ansible
 
+# Enable systemd-user-sessions to permit non-root logins after boot
+RUN ln -sf /lib/systemd/system/systemd-user-sessions.service \
+        /etc/systemd/system/multi-user.target.wants/systemd-user-sessions.service
+
 VOLUME ["/sys/fs/cgroup"]
 EXPOSE 22
 STOPSIGNAL SIGRTMIN+3

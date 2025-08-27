@@ -2,6 +2,31 @@
 
 ## Sprint Summary
 
+### 2025-08-27 - Critical Fixes Sprint: Stabilize Sudo/PAM and Day0 (Active)
+**Goal:** Freeze architecture; fix critical blockers preventing full Day0 deployment.
+
+**Scope:**
+- SSH keys: Source of truth is molecule-runner (named volume `/shared/ssh_keys`)
+- Key distribution: Public key to hosts' `authorized_keys`; private key not distributed
+- Controller convenience: Keys copied to `/workspace/.ssh/` on `ansible-controller`
+- Ansible config: `ansible_ssh_private_key_file: /shared/ssh_keys/id_rsa`
+- User management: `ansible` user SSH + passwordless sudo; `splunk` user runs Splunk
+- PAM policy: Use distro defaults; only adjust if validation shows breakage
+
+**Planned Validation (no code changes):**
+1. task lab-destroy → clean reset
+2. task lab-create → SSH keys generated on runner and propagated
+3. Verify wetty at http://localhost:3000/wetty
+4. From controller: SSH to all nodes; check `sudo -n true`
+5. task day0-deploy → capture failures for `roles/splunk/tasks/prereqs.yml`
+
+**Exit Criteria:**
+- Ansible SSH works end-to-end with key-based auth
+- `ansible` user can sudo without password on AlmaLinux and Ubuntu
+- Day0 playbook reaches Splunk role tasks; remaining failures documented
+
+---
+
 ### 2025-01-08 - Sprint 3: SSH Architecture Fixed ✅
 **Goal:** Fix SSH key architecture and establish working end-to-end connectivity
 
@@ -96,7 +121,7 @@ task status         # All containers running properly
 
 ---
 
-## Current Status: PRODUCTION READY
+## Current Status: Critical Fixes Sprint Active
 
 ### ✅ Working Components
 - **Infrastructure**: 12-container Splunk cluster (9 Splunk + 3 management)

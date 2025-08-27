@@ -15,6 +15,9 @@ splunk_backup: true
 splunk_backup_path: "{{ splunk_home }}/.."
 splunk_backup_tar: "splunk-test-backup.tar"
 
+# Testing-only toggles to avoid modifying the role under test
+skip_acl_install: true
+
 # Git configuration for app deployment testing
 git_server: "git@git-server"  # Using lightweight git server container
 git_key: "/tmp/test_git_key"  # Test key for git access
@@ -46,3 +49,7 @@ splunk_shc_target_group: shcluster
 splunk_version: 9.1.2
 splunk_package_url_full: "https://download.splunk.com/products/splunk/releases/9.1.2/linux/splunk-9.1.2-b6b9c8185839-Linux-x86_64.tgz"
 splunk_package_url_uf: "https://download.splunk.com/products/universalforwarder/releases/9.1.2/linux/splunkforwarder-9.1.2-b6b9c8185839-Linux-x86_64.tgz"
+
+# Container testing overrides - skip problematic tasks
+# acl packages are pre-installed in base images, skip installation
+skip_acl_install: true

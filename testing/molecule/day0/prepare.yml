@@ -33,79 +33,32 @@
         path: /run/systemd/system
       when: ansible_service_mgr == "systemd"
 
-    - name: Generate SSH key pair for inter-container communication
-      openssh_keypair:
-        path: /tmp/splunk_cluster_key
-        type: rsa
-        size: 2048
-        comment: "splunk-test-cluster"
-        force: true  # Force regeneration if key exists
-        mode: '0644'  # Make readable for ansible to copy
-      run_once: true
-      delegate_to: localhost
+    - name: Ensure SSH server is installed and running
+      systemd:
+        name: "{{ 'sshd' if ansible_os_family == 'RedHat' else 'ssh' }}"
+        state: started
+        enabled: true
 
-    - name: Fix SSH private key permissions for copying
+    - name: Ensure ansible user SSH dir exists
       file:
-        path: /tmp/splunk_cluster_key
-        mode: '0644'
-      run_once: true
-      delegate_to: localhost
+        path: /home/ansible/.ssh
+        state: directory
+        owner: ansible
+        group: ansible
+        mode: '0700'
 
-    - name: Copy SSH keys to shared volume  
-      copy:
-        src: "{{ item.src }}"
-        dest: "{{ item.dest }}"
-        mode: "{{ item.mode }}"
-      loop:
-        - { src: /tmp/splunk_cluster_key, dest: /shared/ssh_keys/id_rsa, mode: '0600' }
-        - { src: /tmp/splunk_cluster_key.pub, dest: /shared/ssh_keys/id_rsa.pub, mode: '0644' }
-      run_once: true
-      delegate_to: splunk-license
-
-    - name: Set up SSH for inter-container communication
-      block:
-        - name: Ensure SSH server is installed and running
-          systemd:
-            name: "{{ 'sshd' if ansible_os_family == 'RedHat' else 'ssh' }}"
-            state: started
-            enabled: true
-
-        - name: Create ansible user SSH directory
-          file:
-            path: /home/ansible/.ssh
-            state: directory
-            owner: ansible
-            group: ansible
-            mode: '0700'
-
-        - name: Copy SSH public key to authorized_keys
-          copy:
-            src: /tmp/splunk_cluster_key.pub
-            dest: /home/ansible/.ssh/authorized_keys
-            owner: ansible
-            group: ansible
-            mode: '0600'
-
-        - name: Copy SSH private key for ansible user
-          copy:
-            src: /tmp/splunk_cluster_key
-            dest: /home/ansible/.ssh/id_rsa
-            owner: ansible
-            group: ansible
-            mode: '0600'
-
-        - name: Configure SSH client settings
-          blockinfile:
-            path: /home/ansible/.ssh/config
-            create: true
-            owner: ansible
-            group: ansible
-            mode: '0600'
-            block: |
-              Host *
-                StrictHostKeyChecking no
-                UserKnownHostsFile /dev/null
-                LogLevel ERROR
+    - name: Configure SSH client settings
+      blockinfile:
+        path: /home/ansible/.ssh/config
+        create: true
+        owner: ansible
+        group: ansible
+        mode: '0600'
+        block: |
+          Host *
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            LogLevel ERROR
 
     - name: Create test data directories
       file:

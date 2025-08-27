@@ -55,10 +55,10 @@ task setup              # Build all Docker images
 
 ## 🛠️ Usage
 
-### ✅ Current Working Commands (Sprint 3 Complete)
+### ✅ Primary Commands (Critical Fixes Sprint Active)
 ```bash
 task lab-create         # Create 12-container lab infrastructure + SSH setup
-task day0-deploy        # Deploy Splunk via SSH (connectivity verified)  
+task day0-deploy        # Deploy Splunk via SSH (connectivity verified)
 task status            # Show all container status
 task lab-destroy       # Clean shutdown
 ```
@@ -71,13 +71,15 @@ task status            # Show container status and health
 task reset             # Full cleanup (containers + volumes + networks)
 ```
 
+> Note: `lab-destroy` removes containers and the scenario network but intentionally does not delete named Docker volumes (e.g., Splunk data volumes, ssh-keys). Use `task reset` between full test runs to minimize cross-run interference.
+
 ### 🚀 Day 0 - Splunk Provisioning (SSH Architecture Working ✅)
 ```bash
 task day0-deploy        # Deploy Splunk role via SSH to existing lab
-task day0-verify        # Verify Splunk deployment (planned)
+task day0-verify        # Verify Splunk deployment (in progress)
 ```
 
-### 🔧 Day 1 - Operations (Planned Sprint 4)
+### 🔧 Day 1 - Operations (Planned)
 ```bash
 task day1               # Operational tasks on running cluster (planned)
 ```
@@ -90,7 +92,7 @@ task shell -- <container>   # Shell into container
 task verify-ssh         # Test SSH connectivity between containers
 ```
 
-**Current Status:** SSH architecture fixed, 12-container lab creation working, ready for Splunk role integration.
+**Current Status:** SSH architecture fixed across Ubuntu and AlmaLinux. Lab creation working. PAM/login gating stabilized for containerized environments.
 
 ## 🌐 Web Terminal Interface
 
@@ -116,7 +118,7 @@ task day0-deploy        # SSH works, Splunk deployment needs role fixes
 task status            # All containers running properly ✅
 ```
 
-### 🎯 Planned Sprint 4 Workflow 
+### 🎯 Planned Workflow 
 ```bash
 # Complete development workflow (planned)
 task lab-create         # Create lab infrastructure
@@ -136,10 +138,10 @@ task day0-deploy        # Test SSH connectivity to all hosts ✅
 task status            # Verify all containers healthy ✅
 task lab-destroy       # Clean shutdown ✅
 
-# Sprint 4: Role integration testing (planned)
-# - Fix acl package installation 
-# - Fix sudo configuration
-# - Complete Splunk deployment testing
+# Critical Fixes Sprint (active)
+# - SSH login gating repaired across distros (see PAM section below)
+# - Validate/repair sudo configuration
+# - Complete Splunk deployment testing (prereqs + runtime)
 # - Add verification and operations testing
 ```
 
@@ -159,13 +161,35 @@ task lab-destroy       # Clean shutdown ✅
 ## 🔧 Advanced Usage
 
 ### 🏗️ SSH Architecture (Sprint 3 Achievement)
-**Problem Solved:** SSH keys are now generated in molecule-runner and distributed properly to all containers.
+**Problem Solved:** SSH keys are generated in molecule-runner and distributed properly to all containers.
 
 **Technical Details:**
 - SSH keys: Generated on `localhost` (molecule-runner) via `delegate_to: localhost`
-- Key distribution: Ansible copy from localhost to containers via shared volume
+- Named volume: Keys persisted under `/shared/ssh_keys` (mounted into runner)
+- Key distribution: Public key pushed to all containers; private key never copied to hosts
+- Controller: Keys also copied to `/workspace/.ssh/` on `ansible-controller` for local SSH convenience
+- Ansible: Uses `/shared/ssh_keys/id_rsa` via `group_vars/all.yml`
 - Connectivity: SSH working from molecule-runner to all 12 Splunk containers
 - Network: Docker hostname resolution enabling realistic SSH-based testing
+
+### 🔐 End-to-End Key Distribution Logic (Source of Truth = molecule-runner)
+1. Key generation
+   - `molecule/lab/prepare.yml` runs `openssh_keypair` on `localhost` (runner) → `/shared/ssh_keys/id_rsa`
+2. Publish and cache
+   - `slurp` reads `/shared/ssh_keys/id_rsa(.pub)` from localhost
+   - Private key stays in volume; public key is used for distribution
+3. Distribution to hosts
+   - Public key written to `/home/ansible/.ssh/authorized_keys` on every host
+   - Client config created to disable strict host key checking
+4. Controller convenience
+   - Both keys copied to `ansible-controller:/workspace/.ssh/` for interactive SSH
+5. Ansible configuration
+   - `testing/molecule/inventory/group_vars/all.yml` sets `ansible_ssh_private_key_file: /shared/ssh_keys/id_rsa`
+
+Guarantees:
+- No keys are baked into images
+- No per-scenario regeneration (lab prepares, later scenarios reuse)
+- Private key is never distributed to Splunk hosts
 
 ### 📁 Scenario Structure (Current Working)
 ```
@@ -178,12 +202,85 @@ molecule/
 └── day1/               # Operations (planned Sprint 4)
 ```
 
-### 🎯 Sprint 4 Planning - Splunk Role Integration
-**Current Issues to Fix:**
-- git-server SSH configuration (exclude from `all` group or fix SSH)
-- acl package installation across different OS distributions
-- sudo configuration for ansible user
-- Splunk role prerequisites validation
+### 👤 End-to-End User Management Logic and Execution Contexts
+
+**Understanding how users and processes execute throughout the testing lifecycle:**
+
+#### Phase 1: Container Bootstrap (Molecule Create)
+- **Host Process**: Docker daemon runs as root
+- **Container Init**: `/sbin/init` starts as **UID=0 (root)** inside container
+- **systemd Services**: SSH daemon, systemd-user-sessions run as root
+- **Molecule Connection**: `ansible_connection: docker, ansible_user: root`
+- **Purpose**: Container infrastructure setup, service initialization
+
+#### Phase 2: SSH Infrastructure Setup (Molecule Prepare)  
+- **Connection Method**: SSH from molecule-runner to containers
+- **SSH Target User**: `ansible` user (**UID=1000**) 
+- **SSH Key Authentication**: Password-less SSH keys distributed to `ansible` user
+- **Privilege Escalation**: `ansible` user uses `sudo` to become root for system tasks
+- **Purpose**: SSH connectivity, key distribution, system preparation
+
+#### Phase 3: Splunk Role Deployment (ansible-playbook)
+- **Connection Method**: SSH from molecule-runner to containers
+- **SSH Target User**: `ansible` user (**UID=1000**)
+- **Privilege Context**: 
+  - Most tasks run as `ansible` user
+  - System tasks use `become: true` → `sudo` → **UID=0 (root)**
+- **User Management Tasks**:
+  - `ansible` user (UID=1000) uses `sudo` to create `splunk` user (**UID varies**)
+  - `ansible` user (UID=1000) uses `sudo` to create `splunk` group (**GID varies**)
+- **File Operations**:
+  - Download/extract: `ansible` user → `sudo` → root creates files
+  - Ownership changes: root changes ownership to `splunk:splunk`
+- **Service Management**: `ansible` user → `sudo` → root manages systemd services
+
+#### Phase 4: Splunk Application Runtime (Post-Deployment)
+- **Splunk Processes**: Run as **`splunk` user** (not root)
+- **File Ownership**: `/opt/splunk/` owned by `splunk:splunk`
+- **Service Control**: systemd manages splunkd service running as `splunk` user
+- **Management Access**: `ansible` user can still SSH in and `sudo` for administration
+
+#### Key User Hierarchy:
+1. **Container systemd (root/UID=0)**: Container init and system services
+2. **ansible user (UID=1000)**: SSH access + sudo privileges for management
+3. **splunk user (UID=varies)**: Runs Splunk application processes
+4. **molecule-runner**: External orchestration, connects via SSH to `ansible` user
+
+#### Critical Sudo Requirement:
+The `ansible` user **must** be able to `sudo` without password to:
+- Create `splunk` user/group
+- Install software to `/opt/`
+- Change file ownership
+- Manage systemd services
+- Configure system files
+
+**Critical Fix Focus**: Validate AlmaLinux sudo/PAM behavior using distro defaults (no custom PAM overrides). Repair only if issues persist.
+
+### 🔒 PAM and Login Gating in Containers
+
+Containerized systemd environments can block non-root SSH logins during early boot or due to PAM account policies. This lab applies minimal, distro-appropriate fixes:
+
+- Ubuntu/Debian family
+  - Issue: `/run/nologin` may be present during boot; `pam_nologin` denies non-root users with “System is booting up…”.
+  - Fix: `systemd-user-sessions.service` enabled in the base image and started in `molecule/lab/prepare.yml`. It removes `/run/nologin` when the system is ready.
+
+- RedHat/AlmaLinux family
+  - Issue: PAM account phase can deny the `ansible` user via `pam_sepermit.so` in minimal/container contexts (e.g., SELinux mappings or environment not fully initialized).
+  - Fix (image-level): In `almalinux9-systemd-sshd/Dockerfile`, `pam_sepermit` is relaxed from `required` to `optional` in `/etc/pam.d/sshd`.
+  - What “optional” means: If a PAM module marked `optional` fails or denies, it does not by itself cause the whole PAM stack to fail. The decision defers to other `sufficient`/`required` modules that follow. This avoids hard-failing SSH logins solely due to `pam_sepermit` in containerized lab setups where SELinux/policy contexts may be atypical. Security tradeoff is acceptable for this isolated test lab; production systems should keep distro defaults.
+
+These changes are intentionally narrow, preserve distro defaults where possible, and are documented/reversible. The Splunk role under test remains untouched.
+
+### 🎯 Sprint 4 Status - Container User Management Fixed
+
+**Completed Issues:**
+- ✅ git-server SSH configuration (excluded from `all` group)
+- ✅ acl package installation (skipped via conditional)
+- ✅ duplicate user creation conflicts (removed from prepare.yml)
+- ✅ SSH key architecture (generate in molecule-runner, distribute properly)
+
+**Current Issue:**
+- 🚧 AlmaLinux PAM configuration for `ansible` user `sudo` in systemd containers
 
 ### Environment Persistence  
 The lab environment persists data between runs:
@@ -208,7 +305,7 @@ Use this environment to:
 ## 📖 Documentation
 
 - [CLAUDE.md](../CLAUDE.md) - Complete project documentation and current status
-- [TESTING_PROGRESS.md](TESTING_PROGRESS.md) - Sprint progress and technical achievements  
+- [SPRINT_LOG.md](SPRINT_LOG.md) - Sprint progress and technical achievements  
 - [Molecule Testing Guide](https://ansible.readthedocs.io/projects/molecule/)
 
 ---
