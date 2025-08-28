@@ -9,7 +9,7 @@ driver:
 platforms:
   # Web Terminal Ansible Controller - includes wetty for web access
   - name: ansible-controller
-    image: splunk-base-ubuntu2204:latest
+    image: splunk-ansible-controller:latest
     pre_build_image: true
     privileged: true
     cgroupns_mode: host
@@ -20,7 +20,7 @@ platforms:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
-      - /workspace:/workspace:rw
+      - splunk-ws:/workspace:rw
     tmpfs:
       - /run
       - /tmp

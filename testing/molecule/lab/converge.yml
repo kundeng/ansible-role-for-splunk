@@ -25,7 +25,7 @@
   tasks:
     - name: Test SSH connectivity to all Splunk hosts
       command: >
-        ssh -i /shared/ssh_keys/id_rsa 
+        ssh -i /home/ansible/.ssh/id_rsa 
         -o StrictHostKeyChecking=no 
         -o ConnectTimeout=5 
         ansible@{{ item }} 

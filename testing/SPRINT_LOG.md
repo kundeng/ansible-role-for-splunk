@@ -13,6 +13,18 @@
 - User management: `ansible` user SSH + passwordless sudo; `splunk` user runs Splunk
 - PAM policy: Use distro defaults; only adjust if validation shows breakage
 
+**PAM Configuration Solution:**
+- **Problem Identified:** SSH key authentication failing in AlmaLinux containers with `fatal: Access denied for user ansible by PAM account configuration [preauth]`
+- **Root Cause:** Default PAM account validation modules fail in container environments due to missing system services
+- **Solution:** Created simplified PAM configuration that uses `pam_permit.so` for account phase to bypass complex validation
+- **Implementation:** Modified Dockerfile to create minimal PAM configs for sshd, password-auth, and system-auth
+- **Key Changes:**
+  - Replace complex account validation with `pam_permit.so`
+  - Remove `nullok` parameter from `pam_unix.so` for better security
+  - Make session modules optional to avoid failures
+  - Configure SSH server for key authentication with `UsePAM yes` and `PubkeyAuthentication yes`
+  - Enable systemd-user-sessions service to allow unprivileged user login
+
 **Planned Validation (no code changes):**
 1. task lab-destroy → clean reset
 2. task lab-create → SSH keys generated on runner and propagated

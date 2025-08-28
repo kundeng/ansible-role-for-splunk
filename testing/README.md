@@ -47,7 +47,7 @@ cd ansible-role-for-splunk/testing
 cp .env.example .env
 # Edit .env and add your Remote.it registration code if needed
 
-task setup              # Build all Docker images
+task setup              # Provision host secrets + build all Docker images
 ```
 
 **Optional Environment Variables:**
@@ -55,9 +55,9 @@ task setup              # Build all Docker images
 
 ## 🛠️ Usage
 
-### ✅ Primary Commands (Critical Fixes Sprint Active)
+### ✅ Primary Commands (Streamlined)
 ```bash
-task lab-create         # Create 12-container lab infrastructure + SSH setup
+task lab-create         # Create 12-container lab infrastructure + SSH setup (runs setup:ensure)
 task day0-deploy        # Deploy Splunk via SSH (connectivity verified)
 task status            # Show all container status
 task lab-destroy       # Clean shutdown
@@ -65,7 +65,7 @@ task lab-destroy       # Clean shutdown
 
 ### 🔄 Lab Infrastructure Management
 ```bash
-task lab-create         # Create containers and setup SSH connectivity
+task lab-create         # Create containers and setup SSH connectivity (runs setup:ensure)
 task lab-destroy        # Destroy lab infrastructure
 task status            # Show container status and health
 task reset             # Full cleanup (containers + volumes + networks)
@@ -90,6 +90,8 @@ task build-images       # Build all Docker base images
 task logs -- <container>    # View container logs
 task shell -- <container>   # Shell into container
 task verify-ssh         # Test SSH connectivity between containers
+task controller:shell   # Shell into ansible-controller
+task lab-status         # Show lab containers on splunk-test-network
 ```
 
 **Current Status:** SSH architecture fixed across Ubuntu and AlmaLinux. Lab creation working. PAM/login gating stabilized for containerized environments.
@@ -106,10 +108,11 @@ Access the web terminal at `http://localhost:3000/wetty`:
 
 ## 🧪 Testing Scenarios
 
-### ✅ Current Working Workflow (Sprint 3)
+### ✅ Current Working Workflow (Streamlined)
 ```bash
-# Step 1: Create lab infrastructure with SSH connectivity
-task lab-create         # Creates 12 containers + SSH keys ✅
+# Step 1: Ensure prerequisites (secrets + images), destroy+create lab, run prepare
+task setup              # One-time: provision host secrets + build images
+task lab-recreate       # Idempotent: setup:ensure → destroy → create → prepare
 
 # Step 2: Deploy Splunk (SSH connectivity verified, role integration pending)
 task day0-deploy        # SSH works, Splunk deployment needs role fixes

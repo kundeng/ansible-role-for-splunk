@@ -10,37 +10,101 @@
       wait_for:
         path: /run/systemd/system
       when: ansible_service_mgr == "systemd" and inventory_hostname != 'ansible-controller'
+      tags: [ssh]
 
-    - name: Relax PAM account checks on RedHat family (avoid pam_sepermit denials)
-      block:
-        - name: Check if pam_sepermit is present in sshd PAM stack
-          command: awk '/^account\s+required\s+pam_sepermit\.so/ {print; exit 0} END {if (NR==0) exit 1}' /etc/pam.d/sshd
-          register: pam_sepermit_present
-          changed_when: false
-          failed_when: false
+    # PAM configuration is now handled in the Dockerfile for both Ubuntu and AlmaLinux images
 
-        - name: Make pam_sepermit optional (do not hard-fail account phase)
-          replace:
-            path: /etc/pam.d/sshd
-            regexp: '^account\s+required\s+pam_sepermit\.so'
-            replace: 'account    optional     pam_sepermit.so'
-          when: pam_sepermit_present.rc == 0
-      when: ansible_os_family == 'RedHat' and inventory_hostname != 'ansible-controller'
-
-    - name: Generate SSH keypair on molecule-runner (named volume)
-      openssh_keypair:
-        path: /shared/ssh_keys/id_rsa
-        type: rsa
-        size: 2048
-        comment: "splunk-test-cluster"
-        mode: '0600'
-        force: true
+    - name: Define host key directory path
+      set_fact:
+        lab_ssh_dir: /workspace/testing/.secrets
       run_once: true
       delegate_to: localhost
+      tags: [ssh_keys, controller]
+
+    - name: Ensure host key directory exists
+      file:
+        path: "{{ lab_ssh_dir }}"
+        state: directory
+        mode: '0700'
+      run_once: true
+      delegate_to: localhost
+      tags: [ssh_keys, controller]
+
+    - name: Check if runner SSH key exists (host bind mount)
+      stat:
+        path: "{{ lab_ssh_dir }}/id_rsa"
+      register: runner_key_stat
+      run_once: true
+      delegate_to: localhost
+      tags: [ssh_keys, controller]
+
+    - name: Assert host SSH keypair exists (run task setup if missing)
+      assert:
+        that:
+          - runner_key_stat.stat.exists | default(false)
+        fail_msg: |
+          Required SSH keypair not found at {{ lab_ssh_dir }}/id_rsa. Run:
+            task -d testing setup
+          This provisions host-side secrets and builds images.
+      run_once: true
+      delegate_to: localhost
+      tags: [ssh_keys, controller]
+
+    - name: Check if ansible password file exists on host
+      stat:
+        path: "{{ lab_ssh_dir }}/ansible_password"
+      register: ansible_pw_stat
+      run_once: true
+      delegate_to: localhost
+      tags: [controller, ssh]
+
+    - name: Assert ansible password file exists on host
+      assert:
+        that:
+          - ansible_pw_stat.stat.exists | default(false)
+        fail_msg: |
+          Required file missing: {{ lab_ssh_dir }}/ansible_password. Run:
+            task -d testing setup
+          This provisions host-side secrets and builds images.
+      run_once: true
+      delegate_to: localhost
+      tags: [controller, ssh]
+
+    - name: Read ansible password from host secrets file
+      slurp:
+        src: "{{ lab_ssh_dir }}/ansible_password"
+      register: ansible_pw_file
+      run_once: true
+      delegate_to: localhost
+      tags: [controller, ssh]
+
+    - name: Set ansible_plain_password fact
+      set_fact:
+        ansible_plain_password: "{{ (ansible_pw_file.content | b64decode).strip() }}"
+      run_once: true
+      tags: [controller, ssh]
 
     - name: Set up SSH infrastructure for all Splunk hosts
+      tags: [ssh_keys]
       block:
-        - name: Ensure SSH server is running (already configured in Dockerfile)
+        # Critical step: Remove /run/nologin to allow non-root logins
+        - name: Remove /run/nologin if it exists (prevent login denials)
+          file:
+            path: /run/nologin
+            state: absent
+          when: inventory_hostname != 'ansible-controller'
+            
+        # Critical step: Ensure systemd-user-sessions is started
+        # This service removes /run/nologin on boot
+        - name: Ensure systemd-user-sessions is enabled and started
+          systemd:
+            name: systemd-user-sessions
+            state: started
+            enabled: true
+          when: inventory_hostname != 'ansible-controller' and ansible_service_mgr == 'systemd'
+            
+        # Ensure SSH server is running
+        - name: Ensure SSH server is running
           systemd:
             name: "{{ 'sshd' if ansible_os_family == 'RedHat' else 'ssh' }}"
             state: started
@@ -58,21 +122,23 @@
             group: ansible
             mode: '0700'
 
-    - name: Fetch SSH keys from named volume (run once)
+    - name: Fetch SSH keys from host bind mount (run once)
       slurp:
         src: "{{ item }}"
       loop:
-        - /shared/ssh_keys/id_rsa
-        - /shared/ssh_keys/id_rsa.pub
+        - "{{ lab_ssh_dir }}/id_rsa"
+        - "{{ lab_ssh_dir }}/id_rsa.pub"
       register: runner_keys
       run_once: true
       delegate_to: localhost
+      tags: [controller, ssh_keys]
 
     - name: Extract runner key contents (run once)
       set_fact:
-        runner_private_key: "{{ (runner_keys.results | selectattr('item','equalto','/shared/ssh_keys/id_rsa') | first).content | b64decode }}"
-        runner_public_key: "{{ (runner_keys.results | selectattr('item','equalto','/shared/ssh_keys/id_rsa.pub') | first).content | b64decode }}"
+        runner_private_key: "{{ (runner_keys.results | selectattr('item','equalto', lab_ssh_dir + '/id_rsa') | first).content | b64decode }}"
+        runner_public_key: "{{ (runner_keys.results | selectattr('item','equalto', lab_ssh_dir + '/id_rsa.pub') | first).content | b64decode }}"
       run_once: true
+      tags: [controller, ssh_keys]
 
     - name: Set up SSH infrastructure for all Splunk hosts
       block:
@@ -96,6 +162,22 @@
                 StrictHostKeyChecking no
                 UserKnownHostsFile /dev/null
                 LogLevel ERROR
+
+        - name: Ensure sshd server allows pubkey and password auth and uses PAM (RedHat family)
+          lineinfile:
+            path: /etc/ssh/sshd_config
+            regexp: '^\s*{{ item.key }}\s+'
+            line: '{{ item.key }} {{ item.value }}'
+            state: present
+            create: no
+            backrefs: false
+          loop:
+            - { key: 'UsePAM', value: 'yes' }
+            - { key: 'PubkeyAuthentication', value: 'yes' }
+            - { key: 'PasswordAuthentication', value: 'yes' }
+          when: ansible_os_family == 'RedHat'
+
+        # SSH configuration is now handled in the Dockerfile
 
         - name: Create test data directories
           file:
@@ -131,38 +213,113 @@
 
     - name: Configure Ansible Controller
       block:
-        - name: Ensure apt cache updated (controller)
+        - name: Ensure SSH server is running on controller
+          systemd:
+            name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
+            state: started
+            enabled: true
+          tags: [controller, ssh]
+        - name: Check for node and npm binaries
+          stat:
+            path: "/usr/bin/node"
+          register: node_bin
+          tags: [controller, wetty]
+
+        - name: Ensure apt cache updated (controller) when node is missing
           apt:
             update_cache: true
-          when: ansible_os_family == 'Debian'
+          when: ansible_os_family == 'Debian' and not node_bin.stat.exists
 
-        - name: Install Node.js and npm for wetty
+        - name: Install Node.js and npm for wetty (only if missing)
           apt:
             name:
               - nodejs
               - npm
             state: present
-          when: ansible_os_family == 'Debian'
+          when: ansible_os_family == 'Debian' and not node_bin.stat.exists
+          tags: [controller, wetty]
 
-        - name: Install wetty globally
-          npm:
-            name: wetty
-            global: true
-            state: present
-        - name: Create workspace SSH directory
+        - name: Determine installed wetty version (or missing)
+          shell: |
+            set -e
+            if command -v wetty >/dev/null 2>&1; then
+              wetty --version | sed -E 's/[^0-9.]*([0-9.]+).*/\1/'
+            else
+              echo missing
+            fi
+          args:
+            executable: /bin/bash
+          register: wetty_version
+          changed_when: false
+          tags: [controller, wetty]
+
+        - name: Install or pin wetty to 2.6.0 (retry)
+          shell: |
+            set -e
+            npm install -g wetty@2.6.0
+          args:
+            executable: /bin/bash
+          register: wetty_install
+          retries: 3
+          delay: 5
+          until: wetty_install.rc == 0
+          when: wetty_version.stdout | trim == 'missing' or wetty_version.stdout | trim != '2.6.0'
+          tags: [controller, wetty]
+
+        - name: Verify wetty pinned version
+          shell: |
+            set -e
+            wetty --version | sed -E 's/[^0-9.]*([0-9.]+).*/\1/'
+          args:
+            executable: /bin/bash
+          register: wetty_version_after
+          changed_when: false
+          tags: [controller, wetty]
+        - name: Ensure ansible SSH directory on controller
           file:
-            path: /workspace/.ssh
+            path: /home/ansible/.ssh
             state: directory
             mode: '0700'
+            owner: ansible
+            group: ansible
+          tags: [controller, ssh_keys]
             
-        - name: Copy SSH keys to ansible-controller workspace
+        - name: Read private key from host path
+          slurp:
+            src: "{{ lab_ssh_dir }}/id_rsa"
+          register: runner_priv
+          delegate_to: localhost
+          run_once: true
+          tags: [controller, ssh_keys]
+
+        - name: Read public key from host path
+          slurp:
+            src: "{{ lab_ssh_dir }}/id_rsa.pub"
+          register: runner_pub
+          delegate_to: localhost
+          run_once: true
+          tags: [controller, ssh_keys]
+
+        - name: Copy SSH keys to controller /home/ansible/.ssh
           copy:
             content: "{{ item.content }}"
             dest: "{{ item.dest }}"
             mode: "{{ item.mode }}"
+            owner: ansible
+            group: ansible
           loop:
-            - { content: "{{ runner_private_key }}", dest: /workspace/.ssh/id_rsa, mode: '0600' }
-            - { content: "{{ runner_public_key }}", dest: /workspace/.ssh/id_rsa.pub, mode: '0644' }
+            - { content: "{{ runner_priv.content | b64decode }}", dest: /home/ansible/.ssh/id_rsa, mode: '0600' }
+            - { content: "{{ runner_pub.content | b64decode }}", dest: /home/ansible/.ssh/id_rsa.pub, mode: '0644' }
+          tags: [controller, ssh_keys]
+
+        - name: Install controller authorized_keys
+          copy:
+            content: "{{ runner_public_key }}"
+            dest: /home/ansible/.ssh/authorized_keys
+            mode: '0600'
+            owner: ansible
+            group: ansible
+          tags: [controller, ssh_keys]
           
         - name: Create ansible controller SSH config
           copy:
@@ -171,8 +328,18 @@
                 StrictHostKeyChecking no
                 UserKnownHostsFile /dev/null
                 LogLevel ERROR
-            dest: /workspace/.ssh/config
+            dest: /home/ansible/.ssh/config
             mode: '0600'
+            owner: ansible
+            group: ansible
+          tags: [controller, ssh_keys]
+
+        - name: Set ansible user password on controller
+          user:
+            name: ansible
+            password: "{{ ansible_plain_password | password_hash('sha512') }}"
+            update_password: always
+          tags: [controller, ssh]
 
         - name: Create wetty systemd service
           copy:
@@ -181,11 +348,18 @@
             content: |
               [Unit]
               Description=Wetty web terminal
-              After=network.target ssh.service
+              Wants=network-online.target
+              After=network-online.target ssh.service
 
               [Service]
               Type=simple
-              ExecStart=/usr/local/bin/wetty --port 3000 --host 0.0.0.0 --base /wetty/ --command "/bin/bash --login" --working-dir /workspace
+              # Run as non-root so Wetty uses SSH to localhost and prompts for password
+              User=ansible
+              Group=ansible
+              Environment=HOME=/home/ansible
+              Environment=PATH=/usr/local/bin:/usr/bin:/bin
+              WorkingDirectory=/home/ansible
+              ExecStart=/usr/bin/env wetty --port 3001 --host 127.0.0.1 --ssh-host 127.0.0.1 --ssh-user ansible --base /wetty
               Restart=on-failure
               RestartSec=5
 
@@ -198,6 +372,66 @@
             state: started
             enabled: true
             daemon_reload: true
+          tags: [controller, wetty]
+
+        - name: Configure nginx reverse proxy for Wetty at /wetty
+          copy:
+            dest: /etc/nginx/sites-available/wetty
+            mode: '0644'
+            content: |
+              server {
+                  listen 3000 default_server;
+                  listen [::]:3000 default_server;
+                  server_name _;
+                  # Allow any hostname to work
+
+                  # Redirect bare root to /wetty for convenience
+                  location = / {
+                      return 302 /wetty;
+                  }
+
+                  # Redirect the exact /wetty to /wetty/ so assets resolve
+                  location = /wetty {
+                      return 302 /wetty/;
+                  }
+
+                  # Proxy the /wetty/ prefix to Wetty backend (which runs with --base /wetty)
+                  location /wetty/ {
+                      proxy_pass http://127.0.0.1:3001;
+                      proxy_http_version 1.1;
+                      proxy_set_header Upgrade $http_upgrade;
+                      proxy_set_header Connection "upgrade";
+                      proxy_set_header Host $host;
+                      proxy_set_header X-Real-IP $remote_addr;
+                      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                      proxy_set_header X-Forwarded-Proto $scheme;
+                      proxy_set_header X-Forwarded-Host $host;
+                      proxy_set_header X-Forwarded-Prefix /wetty;
+                      proxy_redirect off;
+                      proxy_read_timeout 86400;
+                  }
+              }
+
+        - name: Enable nginx site
+          file:
+            src: /etc/nginx/sites-available/wetty
+            dest: /etc/nginx/sites-enabled/wetty
+            state: link
+          tags: [controller, nginx]
+
+        - name: Disable default nginx site if present
+          file:
+            path: /etc/nginx/sites-enabled/default
+            state: absent
+          ignore_errors: true
+          tags: [controller, nginx]
+
+        - name: Restart nginx
+          systemd:
+            name: nginx
+            state: restarted
+            enabled: true
+          tags: [controller, nginx]
 
         - name: Create ansible inventory for SSH testing
           copy:
@@ -227,7 +461,7 @@
 
               [all:vars]
               ansible_user=ansible
-              ansible_ssh_private_key_file=/workspace/.ssh/id_rsa
+              ansible_ssh_private_key_file=/home/ansible/.ssh/id_rsa
               ansible_ssh_common_args=-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
             dest: /workspace/inventory.ini
             mode: '0644'
@@ -235,6 +469,7 @@
         # Wetty is now managed by systemd on the controller
 
       when: inventory_hostname == 'ansible-controller'
+      tags: [controller]
 
 - name: Bootstrap Git Server
   hosts: git_server  

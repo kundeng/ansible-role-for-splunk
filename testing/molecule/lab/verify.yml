@@ -27,12 +27,12 @@
         key: ansible
       when: inventory_hostname != 'ansible-controller'
 
-    - name: Verify SSH keys exist
+    - name: Verify SSH keys exist on controller
       stat:
         path: "{{ item }}"
       loop:
-        - /shared/ssh_keys/id_rsa
-        - /shared/ssh_keys/id_rsa.pub
+        - /home/ansible/.ssh/id_rsa
+        - /home/ansible/.ssh/id_rsa.pub
       register: ssh_key_stats
 
     - name: Assert SSH keys exist
@@ -60,7 +60,7 @@
   tasks:
     - name: Test SSH connectivity to all Splunk hosts
       command: >
-        ssh -i /workspace/.ssh/id_rsa 
+        ssh -i /home/ansible/.ssh/id_rsa 
         -o StrictHostKeyChecking=no 
         -o ConnectTimeout=10 
         ansible@{{ item }} 
@@ -71,7 +71,7 @@
 
     - name: Verify ansible can run commands via SSH
       command: >
-        ssh -i /workspace/.ssh/id_rsa 
+        ssh -i /home/ansible/.ssh/id_rsa 
         -o StrictHostKeyChecking=no 
         -o ConnectTimeout=10 
         ansible@{{ item }} 
