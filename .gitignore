@@ -8,3 +8,4 @@ roles/splunk/files/*.lic
 testing/.secrets/
 
 TBD
+testing/software/
