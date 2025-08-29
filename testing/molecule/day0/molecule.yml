@@ -6,7 +6,37 @@
 driver:
   name: docker
 
-platforms: []  # No platforms - operates on existing lab containers
+platforms:
+  - name: ansible-controller
+    groups:
+      - ansible_controller
+  - name: splunk-master
+    groups:
+      - splunk_master
+  - name: splunk-license
+    groups:
+      - splunk_license
+  - name: splunk-deploy
+    groups:
+      - splunk_deploy
+  - name: splunk-fwdmanager
+    groups:
+      - splunk_fwdmanager
+  - name: splunkapp-prod01
+    groups:
+      - splunk_indexer
+  - name: splunkapp-prod02
+    groups:
+      - splunk_indexer
+  - name: splunkshc-prod01
+    groups:
+      - splunk_search_head
+  - name: splunkshc-prod02
+    groups:
+      - splunk_search_head
+  - name: splunk-uf01
+    groups:
+      - splunk_universal_forwarder
 
 provisioner:
   name: ansible

@@ -125,7 +125,7 @@ task prod-test              # Full production-like test
 
 # Utilities
 task status                 # Show container status
-task open-lab              # Access web terminal (http://localhost:3000/wetty)
+task open-lab              # Access web terminal (http://localhost:3000/ttyd)
 task logs <container>      # Show container logs
 task shell <container>     # Access container shell
 task destroy-containers   # Clean up containers
@@ -200,7 +200,7 @@ Hosts must be members of specific groups that determine their Splunk role:
 - **SSH Infrastructure**: Key generation and distribution implemented
 - **Network Architecture**: Docker network and volume sharing functional
 - **Task Commands**: Complete workflow orchestration via Taskfile.yml
-- **Web Terminal**: Access at http://localhost:3000/wetty
+- **Web Terminal**: Access at http://localhost:3000/ttyd
 - **Documentation**: Comprehensive testing framework documentation
 - **Cross-Platform**: Works on Windows, Linux, macOS (Docker only requirement)
 

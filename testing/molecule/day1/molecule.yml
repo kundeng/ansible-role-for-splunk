@@ -6,7 +6,38 @@
 driver:
   name: docker
 
-platforms: []  # No platforms - operates on existing containers
+platforms:
+  - name: splunk-master
+    groups:
+      - clustermanager
+  - name: splunk-license
+    groups:
+      - licensemaster
+  - name: splunk-deploy
+    groups:
+      - deploymentserver
+  - name: splunk-fwdmanager
+    groups:
+      - forwardermanager
+  - name: splunkshc-prod01
+    groups:
+      - shcluster
+      - shdeployer
+  - name: splunkshc-prod02
+    groups:
+      - shcluster
+  - name: splunkapp-prod01
+    groups:
+      - searchheads
+  - name: splunkapp-prod02
+    groups:
+      - searchheads
+  - name: splunk-uf01
+    groups:
+      - uf
+  - name: ansible-controller
+    groups:
+      - controller
 
 dependency:
   name: shell
