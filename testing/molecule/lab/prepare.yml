@@ -219,62 +219,40 @@
             state: started
             enabled: true
           tags: [controller, ssh]
-        - name: Check for node and npm binaries
-          stat:
-            path: "/usr/bin/node"
-          register: node_bin
-          tags: [controller, wetty]
+            
+        # Configure ttyd service to run as ansible user with credential authentication
+        - name: Create ttyd service file
+          copy:
+            dest: /etc/systemd/system/ttyd.service
+            content: |
+              [Unit]
+              Description=ttyd Web Terminal Service
+              After=network.target
 
-        - name: Ensure apt cache updated (controller) when node is missing
-          apt:
-            update_cache: true
-          when: ansible_os_family == 'Debian' and not node_bin.stat.exists
+              [Service]
+              Type=simple
+              User=ansible
+              Group=ansible
+              WorkingDirectory=/home/ansible
+              ExecStart=/usr/local/bin/ttyd -p 7681 -i 127.0.0.1 --writable -t fontSize=14 -t theme={"background":"#000000"} -c ansible:{{ ansible_plain_password }} /bin/bash
+              Restart=always
+              RestartSec=3
+              StandardOutput=syslog
+              StandardError=syslog
+              SyslogIdentifier=ttyd
 
-        - name: Install Node.js and npm for wetty (only if missing)
-          apt:
-            name:
-              - nodejs
-              - npm
-            state: present
-          when: ansible_os_family == 'Debian' and not node_bin.stat.exists
-          tags: [controller, wetty]
+              [Install]
+              WantedBy=multi-user.target
+          tags: [controller, ttyd]
+          
+        - name: Enable ttyd service
+          systemd:
+            name: ttyd
+            enabled: yes
+            daemon_reload: yes
+          tags: [controller, ttyd]
 
-        - name: Determine installed wetty version (or missing)
-          shell: |
-            set -e
-            if command -v wetty >/dev/null 2>&1; then
-              wetty --version | sed -E 's/[^0-9.]*([0-9.]+).*/\1/'
-            else
-              echo missing
-            fi
-          args:
-            executable: /bin/bash
-          register: wetty_version
-          changed_when: false
-          tags: [controller, wetty]
-
-        - name: Install or pin wetty to 2.6.0 (retry)
-          shell: |
-            set -e
-            npm install -g wetty@2.6.0
-          args:
-            executable: /bin/bash
-          register: wetty_install
-          retries: 3
-          delay: 5
-          until: wetty_install.rc == 0
-          when: wetty_version.stdout | trim == 'missing' or wetty_version.stdout | trim != '2.6.0'
-          tags: [controller, wetty]
-
-        - name: Verify wetty pinned version
-          shell: |
-            set -e
-            wetty --version | sed -E 's/[^0-9.]*([0-9.]+).*/\1/'
-          args:
-            executable: /bin/bash
-          register: wetty_version_after
-          changed_when: false
-          tags: [controller, wetty]
+        # Configure SSH for ansible user
         - name: Ensure ansible SSH directory on controller
           file:
             path: /home/ansible/.ssh
@@ -341,82 +319,16 @@
             update_password: always
           tags: [controller, ssh]
 
-        - name: Create wetty systemd service
-          copy:
-            dest: /etc/systemd/system/wetty.service
-            mode: '0644'
-            content: |
-              [Unit]
-              Description=Wetty web terminal
-              Wants=network-online.target
-              After=network-online.target ssh.service
+        # ttyd and nginx are now configured in the Dockerfile
 
-              [Service]
-              Type=simple
-              # Run as non-root so Wetty uses SSH to localhost and prompts for password
-              User=ansible
-              Group=ansible
-              Environment=HOME=/home/ansible
-              Environment=PATH=/usr/local/bin:/usr/bin:/bin
-              WorkingDirectory=/home/ansible
-              ExecStart=/usr/bin/env wetty --port 3001 --host 127.0.0.1 --ssh-host 127.0.0.1 --ssh-user ansible --base /wetty
-              Restart=on-failure
-              RestartSec=5
-
-              [Install]
-              WantedBy=multi-user.target
-
-        - name: Reload systemd and enable/start wetty
-          systemd:
-            name: wetty
-            state: started
-            enabled: true
-            daemon_reload: true
-          tags: [controller, wetty]
-
-        - name: Configure nginx reverse proxy for Wetty at /wetty
-          copy:
-            dest: /etc/nginx/sites-available/wetty
-            mode: '0644'
-            content: |
-              server {
-                  listen 3000 default_server;
-                  listen [::]:3000 default_server;
-                  server_name _;
-                  # Allow any hostname to work
-
-                  # Redirect bare root to /wetty for convenience
-                  location = / {
-                      return 302 /wetty;
-                  }
-
-                  # Redirect the exact /wetty to /wetty/ so assets resolve
-                  location = /wetty {
-                      return 302 /wetty/;
-                  }
-
-                  # Proxy the /wetty/ prefix to Wetty backend (which runs with --base /wetty)
-                  location /wetty/ {
-                      proxy_pass http://127.0.0.1:3001;
-                      proxy_http_version 1.1;
-                      proxy_set_header Upgrade $http_upgrade;
-                      proxy_set_header Connection "upgrade";
-                      proxy_set_header Host $host;
-                      proxy_set_header X-Real-IP $remote_addr;
-                      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                      proxy_set_header X-Forwarded-Proto $scheme;
-                      proxy_set_header X-Forwarded-Host $host;
-                      proxy_set_header X-Forwarded-Prefix /wetty;
-                      proxy_redirect off;
-                      proxy_read_timeout 86400;
-                  }
-              }
-
-        - name: Enable nginx site
+        - name: Ensure nginx sites directories exist
           file:
-            src: /etc/nginx/sites-available/wetty
-            dest: /etc/nginx/sites-enabled/wetty
-            state: link
+            path: "{{ item }}"
+            state: directory
+            mode: '0755'
+          with_items:
+            - /etc/nginx/sites-available
+            - /etc/nginx/sites-enabled
           tags: [controller, nginx]
 
         - name: Disable default nginx site if present
@@ -426,10 +338,17 @@
           ignore_errors: true
           tags: [controller, nginx]
 
-        - name: Restart nginx
+        - name: Ensure ttyd is running
+          systemd:
+            name: ttyd
+            state: started
+            enabled: true
+          tags: [controller, ttyd]
+          
+        - name: Ensure nginx is running
           systemd:
             name: nginx
-            state: restarted
+            state: started
             enabled: true
           tags: [controller, nginx]
 
@@ -466,7 +385,7 @@
             dest: /workspace/inventory.ini
             mode: '0644'
 
-        # Wetty is now managed by systemd on the controller
+        # ttyd is now the default terminal on the controller
 
       when: inventory_hostname == 'ansible-controller'
       tags: [controller]
@@ -482,25 +401,4 @@
     - name: Create test repositories (placeholder)
       raw: "echo 'Gitea ready for app repository testing'"
 
-- name: Bootstrap Remote.it Jumpbox
-  hosts: jumpbox
-  gather_facts: false  # Jumpbox doesn't need Ansible management  
-  connection: docker   # Use docker connection, not SSH
-  tasks:
-    - name: Check if Remote.it registration code is set
-      raw: "echo $R3_REGISTRATION_CODE"
-      register: r3_code_check
-      
-    - name: Wait for Remote.it jumpbox initialization (only if registration code set)
-      raw: "sleep 10 && echo 'Remote.it jumpbox initializing - check logs with: docker logs remoteit-jumpbox'"
-      when: r3_code_check.stdout is defined and r3_code_check.stdout != 'unset' and r3_code_check.stdout != ''
-      ignore_errors: true
-      
-    - name: Check Remote.it jumpbox status (only if registration code set)
-      raw: "ps aux | grep -v grep | grep -i remote || echo 'Remote.it processes starting up...'"
-      when: r3_code_check.stdout is defined and r3_code_check.stdout != 'unset' and r3_code_check.stdout != ''
-      ignore_errors: true
-      
-    - name: Log Remote.it status (no registration code)
-      raw: "echo 'Remote.it jumpbox container created but not configured (no R3_REGISTRATION_CODE provided)'"
-      when: r3_code_check.stdout is not defined or r3_code_check.stdout == 'unset' or r3_code_check.stdout == ''
+# Remote.it Jumpbox section removed as it's no longer needed

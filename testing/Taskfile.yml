@@ -5,13 +5,6 @@
 version: '3'
 
 env:
-  R3_REGISTRATION_CODE:
-    sh: |
-      if [ -f .env ]; then
-        grep "^R3_REGISTRATION_CODE=" .env | cut -d= -f2- | tr -d '"' 2>/dev/null || echo ""
-      else
-        echo ""
-      fi
 
 vars:
   PROJECT_ROOT: '{{.TASKFILE_DIR}}/..'
@@ -22,13 +15,19 @@ tasks:
     desc: Show available tasks
     cmds:
       - task --list
+      
+  # === SYSTEM UTILITIES ===
+  sys:setup:
+    desc: Setup environment (secrets and images)
+    cmds:
+      - task: sys:secrets
+      - task: sys:imaging
+      - task: sys:download
+      - echo "✅ Environment setup complete!"
 
-  # === SETUP ===
-  
-  setup:
+  sys:imaging:
     desc: Build all Docker images required for testing
     cmds:
-      - task: secrets:create
       - echo "🔧 Building Splunk testing framework images..."
       - docker build -t splunk-base-almalinux9:latest {{.DOCKER_IMAGES_DIR}}/almalinux9-systemd-sshd/
       - docker build -t splunk-base-ubuntu2204:latest {{.DOCKER_IMAGES_DIR}}/ubuntu2204-systemd-sshd/
@@ -36,38 +35,29 @@ tasks:
       - docker build -t splunk-git-server:latest {{.DOCKER_IMAGES_DIR}}/gitlab/
       - docker build -t molecule-runner:latest {{.DOCKER_IMAGES_DIR}}/molecule-runner/
       - echo "✅ All images built successfully!"
-      - echo ""
-      - echo "Next steps:"
-      - echo "  task lab-create"
-      - echo "  task day0-deploy"
-
-  ws-volume:ensure:
-    desc: Ensure named volume 'splunk-ws' bind-mounts the project root to containers at /workspace
+      
+  sys:download:
+    desc: Download Splunk binaries for testing
+    dir: "{{.PROJECT_ROOT}}/testing"
     cmds:
+      - mkdir -p software
       - |
-        if docker volume inspect splunk-ws >/dev/null 2>&1; then
-          echo "splunk-ws exists";
+        if [ ! -f software/splunk-9.0.4-de405f4a7979-Linux-x86_64.tgz ]; then
+          echo "📥 Downloading Splunk Enterprise..."
+          curl -L -o software/splunk-9.0.4-de405f4a7979-Linux-x86_64.tgz "https://download.splunk.com/products/splunk/releases/9.0.4/linux/splunk-9.0.4-de405f4a7979-Linux-x86_64.tgz" || echo "⚠️ Download failed, please download manually"
         else
-          echo "Creating splunk-ws bound to {{.PROJECT_ROOT}}";
-          docker volume create --driver local \
-            --opt type=none \
-            --opt device={{.PROJECT_ROOT}} \
-            --opt o=bind splunk-ws >/dev/null;
+          echo "✅ Splunk Enterprise already downloaded"
+        fi
+      - |
+        if [ ! -f software/splunkforwarder-9.0.4-de405f4a7979-Linux-x86_64.tgz ]; then
+          echo "📥 Downloading Splunk Universal Forwarder..."
+          curl -L -o software/splunkforwarder-9.0.4-de405f4a7979-Linux-x86_64.tgz "https://download.splunk.com/products/universalforwarder/releases/9.0.4/linux/splunkforwarder-9.0.4-de405f4a7979-Linux-x86_64.tgz" || echo "⚠️ Download failed, please download manually"
+        else
+          echo "✅ Splunk Universal Forwarder already downloaded"
         fi
 
-  setup:ensure:
-    desc: Ensure images and host secrets exist (build/provision if missing)
-    status:
-      - docker image inspect molecule-runner:latest >/dev/null 2>&1
-      - test -f {{.PROJECT_ROOT}}/testing/.secrets/id_rsa
-      - test -f {{.PROJECT_ROOT}}/testing/.secrets/id_rsa.pub
-      - test -f {{.PROJECT_ROOT}}/testing/.secrets/ansible_password
-    cmds:
-      - task: setup
-
-  # === SECRETS (Option A: host-preprovisioned) ===
-  secrets:create:
-    desc: Create testing/.secrets iff missing (idempotent, runs on host)
+  sys:secrets:
+    desc: Create testing/.secrets directory with SSH keys and password
     dir: "{{.PROJECT_ROOT}}/testing"
     cmds:
       - mkdir -p .secrets && chmod 700 .secrets
@@ -76,41 +66,27 @@ tasks:
       - chmod 600 .secrets/id_rsa .secrets/ansible_password
       - chmod 644 .secrets/id_rsa.pub
 
-  secrets:assert:
-    desc: Ensure host secrets exist before Molecule runs
-    dir: "{{.PROJECT_ROOT}}/testing"
-    cmds:
-      - test -f .secrets/id_rsa
-      - test -f .secrets/id_rsa.pub
-      - test -f .secrets/ansible_password
-
-  # === LAB MANAGEMENT ===
-
+  # === LAB SCENARIO ===
   lab:
-    desc: Create and setup complete lab infrastructure (12 containers)
+    desc: Create and setup complete lab infrastructure
     cmds:
-      - task: ws-volume:ensure
-      - task: setup:ensure
-      - echo "🏗️  Creating complete lab infrastructure..."
+      - task: sys:setup
+      - echo "Creating complete lab infrastructure..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
           -v {{.PROJECT_ROOT}}:/workspace \
           -w /workspace/testing \
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
-          -e R3_REGISTRATION_CODE={{.R3_REGISTRATION_CODE}} \
           molecule-runner:latest \
           molecule test -s lab
       - echo "✅ Lab infrastructure ready!"
-      - echo ""
-      - echo "Access lab:"
-      - 'echo "  http://localhost:3000/wetty  # Web terminal"'
+      - echo "Access web terminal at http://localhost:3000/ttyd"
 
-  lab-create:
+  lab:create:
     desc: Create lab containers and setup SSH keys
     cmds:
-      - task: ws-volume:ensure
-      - task: setup:ensure
+      - task: sys:setup
       - echo "📦 Creating lab containers..."
       - |
         docker run --rm \
@@ -118,15 +94,13 @@ tasks:
           -v {{.PROJECT_ROOT}}:/workspace \
           -w /workspace/testing \
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
-          -e R3_REGISTRATION_CODE={{.R3_REGISTRATION_CODE}} \
           molecule-runner:latest \
           molecule create -s lab
 
-  lab-prepare:
+  lab:prepare:
     desc: Prepare lab (runs testing/molecule/lab/prepare.yml)
     cmds:
-      - task: ws-volume:ensure
-      - task: setup:ensure
+      - task: sys:setup
       - echo "🧩 Preparing lab..."
       - |
         docker run --rm \
@@ -134,37 +108,31 @@ tasks:
           -v {{.PROJECT_ROOT}}:/workspace \
           -w /workspace/testing \
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
-          -e R3_REGISTRATION_CODE={{.R3_REGISTRATION_CODE}} \
           molecule-runner:latest \
           molecule prepare -s lab
-
-  lab-recreate:
-    desc: "Idempotent: secrets-if-missing → destroy → create → prepare"
+          
+  lab:run:
+    desc: Create, prepare, and converge lab without destroying containers
     cmds:
-      - task: setup:ensure
-      - task: lab-destroy
-      - task: lab-create
-
-  _lab-destroy-manual:
-    desc: "[TEMP] Manually destroy lab containers and network"
-    cmds:
+      - task: sys:setup
+      - echo "🚀 Creating and setting up lab infrastructure..."
+      - task: lab:create
+      - task: lab:prepare
+      - echo "🔄 Running converge step..."
       - |
-        echo "Force-removing containers on splunk-test-network..."
-        CONTAINER_IDS=$(docker ps -a --filter network=splunk-test-network -q)
-        if [ -n "$CONTAINER_IDS" ]; then
-          echo "Removing containers: $CONTAINER_IDS"
-          echo "$CONTAINER_IDS" | xargs docker rm -f
-        else
-          echo "No containers found on splunk-test-network."
-        fi
-        echo "Removing splunk-test-network..."
-        docker network rm splunk-test-network || true
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
+          molecule-runner:latest \
+          molecule converge -s lab
+      - echo "✅ Lab infrastructure ready!"
+      - echo "Access web terminal at http://localhost:3000/ttyd"
 
-  lab-destroy:
+  lab:destroy:
     desc: Destroy lab infrastructure
     cmds:
-      - task: ws-volume:ensure
-      - task: setup:ensure
       - echo "💥 Destroying lab infrastructure..."
       - |
         docker run --rm \
@@ -172,82 +140,21 @@ tasks:
           -v {{.PROJECT_ROOT}}:/workspace \
           -w /workspace/testing \
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
-          -e MOLECULE_PROJECT_DIRECTORY=/workspace/testing \
           molecule-runner:latest \
           molecule destroy -s lab
-
-  # === FAST ITERATION (CONTROLLER ONLY) ===
-  controller:
-    desc: "Idempotent: prepare controller only (molecule prepare --tags controller)"
-    cmds:
-      - task: ws-volume:ensure
-      - task: setup:ensure
-      - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v {{.PROJECT_ROOT}}:/workspace -w /workspace/testing -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} molecule-runner:latest molecule converge -s lab -- --limit ansible-controller --tags controller
-
-  controller:shell:
-    desc: Open an interactive shell in the ansible-controller container
-    cmds:
-      - docker exec -it ansible-controller /bin/bash
-
-  controller:ssh-test:
-    desc: Test SSH from helper container to ansible-controller using testing/.secrets key
-    cmds:
-      - |
-        docker run --rm \
-          --network splunk-test-network \
-          -v {{.PROJECT_ROOT}}:/workspace:ro \
-          alpine:latest \
-          sh -c 'apk add --quiet --no-cache openssh-client >/dev/null && \
-          ssh -i /workspace/testing/.secrets/id_rsa -o IdentitiesOnly=yes \
-              -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null ansible@ansible-controller "echo OK"'
-
-  lab-status:
+          
+  lab:status:
     desc: Show status of lab containers on the splunk-test-network
     cmds:
-      - echo "📋 Containers on splunk-test-network:" 
+      - echo "📋 Containers on splunk-test-network" 
       - docker ps --filter network=splunk-test-network --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
 
-  wetty:health:
-    desc: Diagnose Wetty and nginx health (host and inside ansible-controller)
-    cmds:
-      - |
-          echo "🌐 Host check: http://localhost:3000/wetty"
-          if command -v curl >/dev/null 2>&1; then
-            curl -sS -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:3000/wetty || true
-          else
-            echo 'curl not found on host'
-          fi
-      - |
-          echo "🐳 In-container checks (ansible-controller): systemd + ports + curl"
-          docker exec ansible-controller bash -lc '
-            set -e
-            echo "-- systemctl status wetty --"; systemctl is-enabled wetty || true; systemctl is-active wetty || true; systemctl status --no-pager wetty | sed -n "1,12p" || true
-            echo "-- systemctl status nginx --"; systemctl is-enabled nginx || true; systemctl is-active nginx || true; systemctl status --no-pager nginx | sed -n "1,12p" || true
-            echo "-- ss -ltnp for 3000/3001 --"; (ss -ltnp | egrep ":3000|:3001" || true)
-            echo "-- curl localhost:3001 (wetty backend) --"; (curl -sS -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:3001 || true)
-            echo "-- curl localhost:3000/wetty (nginx proxy) --"; (curl -sS -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:3000/wetty || true)
-            echo "-- nginx configtest --"; nginx -t || true
-          '
-
-  # === SMOKE TESTS ===
-  ssh-smoke:
-    desc: SSH smoke test from controller to all hosts (ansible ping using mounted workspace inventory)
-    cmds:
-      - |
-        docker exec ansible-controller bash -lc '
-          set -e
-          test -f /workspace/testing/molecule/inventory/hosts.yml || { echo "inventory missing under /workspace"; ls -la /workspace/testing/molecule/inventory || true; exit 1; }
-          ansible --version | head -n1 || { echo "Ansible not found in controller"; exit 1; }
-          ansible -i /workspace/testing/molecule/inventory/hosts.yml -m ping all
-        '
-
-  # === DAY 0 - PROVISIONING ===
-
+  # === DAY0 SCENARIO ===
   day0:
     desc: Day 0 - Deploy Splunk via SSH (initial provisioning)
     cmds:
-      - 'echo "🚀 Day 0: Deploying Splunk (initial provisioning)..."'
+      - task: sys:setup
+      - echo "🚀 Day 0 - Deploying Splunk (initial provisioning)..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -256,12 +163,12 @@ tasks:
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
           molecule converge -s day0
-      - 'echo "✅ Day 0 provisioning complete!"'
+      - echo "✅ Day 0 provisioning complete!"
 
-  day0-deploy:
+  day0:deploy:
     desc: Day 0 - Deploy Splunk role directly via ansible-playbook (assumes lab exists)
     cmds:
-      - 'echo "🚀 Day 0: Deploying Splunk via ansible-playbook..."'
+      - echo "🚀 Day 0 - Deploying Splunk via ansible-playbook..."
       - |
         docker run --rm \
           --network splunk-test-network \
@@ -271,10 +178,10 @@ tasks:
           molecule-runner:latest \
           bash -c "ansible-galaxy collection install community.general && ansible-playbook -i testing/molecule/inventory/hosts.yml playbooks/splunk_install_or_upgrade.yml"
 
-  day0-verify:
+  day0:verify:
     desc: Day 0 - Verify Splunk deployment only
     cmds:
-      - 'echo "🔍 Day 0: Verifying Splunk deployment..."'
+      - echo "🔍 Day 0 - Verifying Splunk deployment..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -284,12 +191,12 @@ tasks:
           molecule-runner:latest \
           molecule verify -s day0
 
-  # === DAY 1 - OPERATIONS ===
-
+  # === DAY1 SCENARIO ===
   day1:
     desc: Day 1 - Operational tasks on running Splunk cluster
     cmds:
-      - 'echo "🔧 Day 1: Running operational tasks..."'
+      - task: sys:setup
+      - echo "🔧 Day 1 - Running operational tasks..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -298,11 +205,90 @@ tasks:
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
           molecule test -s day1
-      - 'echo "✅ Day 1 operations complete!"'
+      - echo "✅ Day 1 operations complete!"
+
+  # === DIAGNOSTICS ===
+  sys:diag:ttyd:
+    desc: Diagnose ttyd and nginx health (host and inside ansible-controller)
+    cmds:
+      - |
+          echo "🌐 Host check http://localhost:3000/ttyd"
+          if command -v curl >/dev/null 2>&1; then
+            curl -sS -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:3000/ttyd || true
+          else
+            echo "curl not found, skipping host check"
+          fi
+          
+          docker exec ansible-controller bash -c '
+            echo "-- systemctl status ttyd --"; systemctl is-enabled ttyd || true; systemctl is-active ttyd || true; systemctl status --no-pager ttyd | sed -n "1,12p" || true
+            echo "-- systemctl status nginx --"; systemctl is-enabled nginx || true; systemctl is-active nginx || true; systemctl status --no-pager nginx | sed -n "1,12p" || true
+            echo "-- ss -ltnp for port 3000 --"; (ss -ltnp | grep ":3000" || true)
+            echo "-- curl localhost:3000 (ttyd backend) --"; (curl -sS -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:3000 || true)
+            echo "-- curl localhost:3000/ttyd (nginx proxy) --"; (curl -sS -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:3000/ttyd || true)
+            echo "-- nginx configtest --"; nginx -t || true
+          '
+          
+  sys:diag:ssh:
+    desc: Test SSH connectivity to all hosts in the lab
+    cmds:
+      - echo "🔍 Testing SSH connectivity to all hosts"
+      - |
+        docker exec -u ansible ansible-controller bash -c '
+          cd /workspace
+          echo "\n=== ANSIBLE PING USING INVENTORY ==="
+          ansible -i testing/molecule/inventory/hosts.yml all -m ping
+          echo "\n=== SSH CONFIG ==="
+          cat ~/.ssh/config
+          echo "\n=== SSH KEYS ==="
+          ls -la ~/.ssh/
+          echo "\n=== TESTING SSH CONNECTIONS ==="
+          for host in splunk-master splunk-license splunk-fwdmanager splunkapp-prod01 splunkapp-prod02 splunkshc-prod01 splunkshc-prod02 splunk-deploy splunk-uf01; do
+            echo "\nTesting SSH to $host:"
+            ssh -o StrictHostKeyChecking=no $host "hostname" || echo "Failed to connect to $host"
+          done
+        '
+
+  # === SYSTEM UTILITIES ===
+  sys:controller:
+    desc: Start the ansible-controller container and open a shell
+    cmds:
+      - echo "🚀 Starting ansible-controller..."
+      - |
+        docker run -d --rm \
+          --name ansible-controller \
+          --network splunk-test-network \
+          -p 3000:3000 \
+          -v splunk-ws:/workspace \
+          -v {{.PROJECT_ROOT}}/testing/.secrets:/home/ansible/.secrets \
+          -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
+          splunk-ansible-controller:latest
+      - echo "✅ Controller started!"
+      - echo "Access controller at http://localhost:3000/ttyd"
+      - docker exec -it ansible-controller bash
+
+  sys:status:
+    desc: Show status of all containers on splunk-test-network
+    cmds:
+      - echo "📋 Containers on splunk-test-network" 
+      - docker ps --filter network=splunk-test-network --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+      
+  sys:reset:
+    desc: Reset everything (destroy lab + clean Docker)
+    cmds:
+      - task: lab:destroy
+      - echo "💥 Removing all containers and images..."
+      - docker rm -f $(docker ps -a -q) 2>/dev/null || true
+      - docker rmi -f $(docker images -q) 2>/dev/null || true
+      - docker volume rm splunk-ws 2>/dev/null || true
+      - echo "✅ Reset complete!"
+
+  sys:shell:
+    desc: "Shell into container (usage - task sys:shell -- container-name)"
+    cmds:
+      - docker exec -it {{.CLI_ARGS}} bash
 
   # === WORKFLOWS ===
-
-  full-test:
+  workflow:full-test:
     desc: Complete end-to-end test (lab + day0 + day1)
     cmds:
       - task: lab
@@ -310,150 +296,15 @@ tasks:
       - task: day1
       - echo "🎉 Complete end-to-end testing finished!"
 
-  provision:
-    desc: Complete provisioning workflow (lab + day0)
-    cmds:
-      - task: lab
-      - task: day0
-      - echo "🎉 Complete provisioning finished!"
-
-  dev:
-    desc: Start development environment (lab + web terminal access)
-    cmds:
-      - task: lab
-      - echo "🚀 Development environment ready!"
-      - echo ""
-      - echo "Development workflow:"
-      - 'echo "  1. Access: http://localhost:3000/wetty"'
-      - 'echo "  2. Edit Splunk role in ../roles/splunk/"'
-      - 'echo "  3. Test: task day0-deploy"'
-      - 'echo "  4. Verify: task day0-verify"'
-      - 'echo "  5. Operations: task day1"'
-
-  # === UTILITIES ===
-
-  status:
-    desc: Show container status
-    cmds:
-      - echo "📊 Container Status:"
-      - docker ps -a | grep -E "(CONTAINER|splunk|ansible|git-server|remoteit)" || echo "No containers found"
-
-  logs:
-    desc: Show logs for container (usage - task logs -- container-name)
-    cmds:
-      - 'docker logs {{.CLI_ARGS}}'
-
-  shell:
-    desc: Shell into container (usage - task shell -- container-name) 
-    cmds:
-      - 'docker exec -it {{.CLI_ARGS}} /bin/bash'
-
-  reset:
-    desc: Clean reset (destroy everything + Docker cleanup)
-    cmds:
-      - task: lab-destroy
-      - echo "🧹 Cleaning Docker resources..."
-      - docker system prune -f
-      - docker volume prune -f
-      - echo "✅ Clean reset complete!"
-
-  # === DEV UTILITIES ===
-
-  molecule-shell:
-    desc: "[DEV] Interactive shell in molecule-runner container"
+  # === DEVELOPMENT UTILITIES ===
+  molecule:shell:
+    desc: "Interactive shell in molecule-runner container"
     cmds:
       - |
         docker run --rm -it \
           -v /var/run/docker.sock:/var/run/docker.sock \
           -v {{.PROJECT_ROOT}}:/workspace \
           -w /workspace/testing \
+          -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
-          /bin/bash
-
-  verify-ssh:
-    desc: "[DEV] Test SSH connectivity between containers"
-    cmds:
-      - echo "🔍 Testing SSH connectivity..."
-      - |
-        docker run --rm \
-          --network splunk-test-network \
-          -v {{.PROJECT_ROOT}}:/workspace:ro \
-          alpine:latest \
-          sh -c 'apk add --quiet --no-cache openssh-client && \
-          set -e; \
-          for container in splunk-master splunk-license splunkapp-prod01 splunkshc-prod01; do \
-              printf "Testing $container: "; \
-              if timeout 10 ssh -i /workspace/testing/.secrets/id_rsa -o IdentitiesOnly=yes -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ansible@$container "echo OK" 2>/dev/null; then \
-                  echo "✅"; \
-              else \
-                  echo "❌"; \
-              fi; \
-          done'
-
-  ssh:diag-prod02:
-    desc: Print SSH/PAM diagnostics for splunkapp-prod02 (non-invasive)
-    cmds:
-      - echo "🧪 Collecting diagnostics from splunkapp-prod02"
-      - |
-        echo "== docker inspect splunkapp-prod02 =="; \
-        docker inspect splunkapp-prod02 --format 'Name={{.Name}} State={{.State.Status}} IP={{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' || true
-      - |
-        echo "\n== sshd status =="; \
-        docker exec splunkapp-prod02 bash -lc 'systemctl is-active sshd || systemctl is-active ssh' || true
-      - |
-        echo "\n== ansible user and permissions =="; \
-        docker exec splunkapp-prod02 bash -lc 'getent passwd ansible; id ansible; ls -ld /home/ansible /home/ansible/.ssh; ls -l /home/ansible/.ssh/authorized_keys || true' || true
-      - |
-        echo "\n== /etc/pam.d/sshd (first 200 lines) =="; \
-        docker exec splunkapp-prod02 bash -lc 'nl -ba /etc/pam.d/sshd | sed -n "1,200p"' || true
-      - |
-        echo "\n== /etc/pam.d/password-auth =="; \
-        docker exec splunkapp-prod02 bash -lc 'test -f /etc/pam.d/password-auth && nl -ba /etc/pam.d/password-auth | sed -n "1,200p" || echo "password-auth missing"' || true
-      - |
-        echo "\n== /etc/pam.d/system-auth =="; \
-        docker exec splunkapp-prod02 bash -lc 'test -f /etc/pam.d/system-auth && nl -ba /etc/pam.d/system-auth | sed -n "1,200p" || echo "system-auth missing"' || true
-      - |
-        echo "\n== authselect current (if available) =="; \
-        docker exec splunkapp-prod02 bash -lc 'command -v authselect >/dev/null 2>&1 && authselect current || echo "authselect not installed"' || true
-      - |
-        echo "\n== PAM account-phase lines across files =="; \
-        docker exec splunkapp-prod02 bash -lc 'grep -n "^account" /etc/pam.d/* 2>/dev/null | sed -n "1,200p"' || true
-      - |
-        echo "\n== Shadow entry for ansible =="; \
-        docker exec splunkapp-prod02 bash -lc 'getent shadow ansible || grep -E "^ansible:" /etc/shadow || echo "no shadow entry for ansible"' || true
-      - |
-        echo "\n== Account expiry (chage -l ansible) =="; \
-        docker exec splunkapp-prod02 bash -lc 'chage -l ansible || echo "chage not available"' || true
-      - |
-        echo "\n== nologin gate =="; \
-        docker exec splunkapp-prod02 bash -lc 'test -f /run/nologin && echo present || echo absent' || true
-      - |
-        echo "\n== sshd_config auth flags =="; \
-        docker exec splunkapp-prod02 bash -lc 'egrep -n "^(UsePAM|PasswordAuthentication|PubkeyAuthentication)\\b" /etc/ssh/sshd_config || true' || true
-      - |
-        echo "\n== sshd -T (effective) auth-related =="; \
-        docker exec splunkapp-prod02 bash -lc 'sshd -T | egrep -E "usepam|pubkeyauthentication|passwordauthentication|authorizedkeysfile|subsystem"' || true
-      - |
-        echo "\n== sshd -T (allow/deny directives) =="; \
-        docker exec splunkapp-prod02 bash -lc 'sshd -T | egrep -E "^(allowusers|denyusers|allowgroups|denygroups)\b" || echo "no allow/deny directives"' || true
-      - |
-        echo "\n== sshd journal (tail) =="; \
-        docker exec splunkapp-prod02 bash -lc 'journalctl -u sshd -n 50 --no-pager || journalctl -u ssh -n 50 --no-pager' || true
-      - |
-        echo "\n== SSH -vvv from controller as ansible (publickey) =="; \
-        docker exec -u ansible ansible-controller bash -lc 'ssh -vvv -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ansible@splunkapp-prod02 echo OK' || true
-      - |
-        echo "\n== passwd -S ansible (lock state) =="; \
-        docker exec splunkapp-prod02 bash -lc 'passwd -S ansible 2>/dev/null || echo "passwd -S not available"' || true
-      - |
-        echo "\n== faillock report for ansible (if available) =="; \
-        docker exec splunkapp-prod02 bash -lc 'command -v faillock >/dev/null 2>&1 && faillock --user ansible || echo "faillock not installed"' || true
-      - |
-        echo "\n== /etc/nsswitch.conf (passwd, shadow, group) =="; \
-        docker exec splunkapp-prod02 bash -lc 'egrep -n "^(passwd|shadow|group)\s*:" /etc/nsswitch.conf || true' || true
-      - |
-        echo "\n== /etc/ssh/sshd_config.d listing =="; \
-        docker exec splunkapp-prod02 bash -lc 'ls -l /etc/ssh/sshd_config.d 2>/dev/null || echo "no sshd_config.d directory"' || true
-      - |
-        echo "\n== /etc/ssh/sshd_config.d/50-cloud-init.conf (if present) =="; \
-        docker exec splunkapp-prod02 bash -lc 'test -f /etc/ssh/sshd_config.d/50-cloud-init.conf && sed -n "1,200p" /etc/ssh/sshd_config.d/50-cloud-init.conf || echo "50-cloud-init.conf not present"' || true
+          bash

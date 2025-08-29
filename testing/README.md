@@ -27,7 +27,6 @@ This framework serves multiple use cases:
 
 ### Management & Access Layer:
 - **Ansible Controller** (`ansible-controller`) - Web terminal and deployment control
-- **Remote.it Jumpbox** (`remoteit-jumpbox`) - External secure access gateway
 - **Persistent Volumes** - Maintains state across container restarts
 - **Docker Networking** - Full connectivity between all components
 
@@ -92,19 +91,35 @@ task shell -- <container>   # Shell into container
 task verify-ssh         # Test SSH connectivity between containers
 task controller:shell   # Shell into ansible-controller
 task lab-status         # Show lab containers on splunk-test-network
+task terminal:health    # Check ttyd health and accessibility
 ```
 
 **Current Status:** SSH architecture fixed across Ubuntu and AlmaLinux. Lab creation working. PAM/login gating stabilized for containerized environments.
 
 ## 🌐 Web Terminal Interface
 
-Access the web terminal at `http://localhost:3000/wetty`:
+Access the web terminal at `http://localhost:3000/ttyd`:
 
 - **Terminal Access** - Direct shell access to ansible-controller
 - **SSH Connectivity** - All Splunk containers accessible via SSH
 - **File Navigation** - Browse and edit configurations across the cluster
 - **Persistent Sessions** - Connections survive browser refreshes
 - **Ansible Environment** - Pre-configured with ansible-role-for-splunk
+
+### Web Terminal
+
+The testing framework uses ttyd as the web terminal:
+```bash
+task lab-create         # Creates lab with ttyd terminal
+task terminal:health    # Check ttyd health and accessibility
+```
+
+#### Why ttyd?
+- More actively maintained (latest release March 2024)
+- C-based implementation (more lightweight than Node.js)
+- Uses xterm.js for frontend terminal emulation
+- No JavaScript dependency issues
+- Better stability and performance
 
 ## 🧪 Testing Scenarios
 
@@ -125,6 +140,7 @@ task status            # All containers running properly ✅
 ```bash
 # Complete development workflow (planned)
 task lab-create         # Create lab infrastructure
+# Lab is created with ttyd by default
 task day0-deploy        # Deploy Splunk via SSH (fix role prerequisites)  
 task day0-verify        # Verify Splunk deployment health
 task day1               # Operations testing (restart, backup, maintenance)
@@ -313,4 +329,4 @@ Use this environment to:
 
 ---
 
-**Status: SSH Architecture Fixed ✅ - Ready for Splunk Role Integration**
+**Status: SSH Architecture Fixed ✅ - ttyd Web Terminal Implemented ✅ - Ready for Splunk Role Integration**
