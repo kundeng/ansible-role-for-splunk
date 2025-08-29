@@ -234,6 +234,8 @@ tasks:
       - echo "🔍 Testing SSH connectivity to all hosts"
       - |
         docker exec -u ansible ansible-controller bash -c '
+          echo "\n=== ANSIBLE PING USING INVENTORY ==="
+          ansible -i /workspace/testing/molecule/inventory/hosts.yml all -m ping
           echo "\n=== SSH CONFIG ==="
           cat ~/.ssh/config
           echo "\n=== SSH KEYS ==="
