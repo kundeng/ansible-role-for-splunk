@@ -49,6 +49,17 @@ cp .env.example .env
 task setup              # Provision host secrets + build all Docker images
 ```
 
+## ▶️ Next Phase: Day 0
+
+The lab is stabilized and ready for Day 0 provisioning.
+
+- Inventory source of truth: `/workspace/testing/molecule/inventory/hosts.yml`
+- SSH diagnostics: `task sys:diag:ssh` targets group `full` (excludes `git_server`)
+- Artifacts: fetched via URLs defined in `molecule/inventory/group_vars/all.yml` (9.1.2)
+- ACL: `skip_acl_install: true` to speed up container tests
+
+Proceed with Day 0 using the Taskfile Day 0 targets. Refer to `testing/Taskfile.yml` for the exact Day 0 task names in this branch.
+
 **Optional Environment Variables:**
 - `R3_REGISTRATION_CODE` - Get your free registration code from [remote.it](https://remote.it) for external access
 
@@ -94,7 +105,7 @@ task lab-status         # Show lab containers on splunk-test-network
 task terminal:health    # Check ttyd health and accessibility
 ```
 
-**Current Status:** SSH architecture fixed across Ubuntu and AlmaLinux. Lab creation working. PAM/login gating stabilized for containerized environments.
+**Current Status:** SSH architecture fixed across Ubuntu and AlmaLinux. Lab creation working. Inventory validated. SSH diagnostics target `full` (git_server excluded). Artifacts fetched via remote URLs. ACL install skipped for container tests. PAM/login gating stabilized.
 
 ## 🌐 Web Terminal Interface
 

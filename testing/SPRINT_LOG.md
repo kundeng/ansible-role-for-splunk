@@ -32,6 +32,160 @@ command example
 ## Sprint Summary
 <!-- Most recent sprints at the top -->
 
+### 2025-08-29 - Inventory & SSH Stabilization → Ready for Day 0 ✅
+**Goal:** Finalize inventory, SSH diagnostics, and artifact sourcing to unblock Day 0.
+
+**Scope:**
+- Fix YAML inventory syntax and host vars
+- Ensure bind mount to `/workspace` in `ansible-controller`
+- Verify SSH via Ansible ping; exclude `git_server`
+- Unify artifact source to remote URLs; remove predownload step from setup
+- Keep ACL installs skipped in container tests
+
+**Tasks Completed:**
+- ✅ `testing/molecule/inventory/hosts.yml`: indentation fixes; host-level vars corrected
+- ✅ `testing/Taskfile.yml`: `sys:diag:ssh` targets `full` (excludes `git_server`)
+- ✅ `testing/molecule/inventory/group_vars/all.yml`: deduplicate `skip_acl_install`
+- ✅ `testing/Taskfile.yml`: remove `sys:download` from `sys:setup` (use remote URLs)
+- ✅ `task lab:run`: end-to-end create → prepare → converge succeeded
+
+**Technical Achievements:**
+- Single source of truth inventory at `/workspace/testing/molecule/inventory/hosts.yml`
+- SSH diagnostics streamlined (Ansible ping covers SSH transport)
+- Artifact retrieval standardized via URLs (Splunk 9.1.2)
+- Faster container tests with `skip_acl_install: true`
+
+**Key Files Modified:**
+- `testing/molecule/inventory/hosts.yml`: YAML corrections
+- `testing/Taskfile.yml`: diagnostics scope and setup simplification
+- `testing/molecule/inventory/group_vars/all.yml`: duplicate key removed
+- `testing/README.md`: Next Phase: Day 0; status updated
+
+**Verified Working:**
+```bash
+task sys:diag:ssh   # Pings group 'full' successfully
+task lab:run        # Full cycle passes (create → prepare → converge)
+```
+
+**Next Sprint Ready:** Day 0 provisioning using Taskfile targets
+
+
+### 2025-08-30 - ttyd Default Implementation ✅
+**Goal:** Make ttyd the default web terminal and remove all Wetty-related configurations
+
+**Scope:**
+- Remove all Wetty-related configurations and references
+- Update all relevant files to make ttyd the default terminal
+- Ensure consistent documentation and task naming
+
+**Tasks Completed:**
+- ✅ **Rename Dockerfile** - Renamed Dockerfile.ttyd to Dockerfile in ansible-controller
+- ✅ **Update Taskfile** - Removed Wetty-specific tasks and renamed ttyd tasks to generic terminal tasks
+- ✅ **Update Documentation** - Updated README.md to reflect ttyd as the default terminal
+- ✅ **Standardize Task Names** - Changed task names from wetty/ttyd-specific to generic terminal references
+
+**Technical Achievements:**
+- Simplified container build process with a single Dockerfile
+- Standardized task naming convention for better maintainability
+- Removed duplicate health check tasks
+- Consolidated documentation to reflect ttyd as the only terminal option
+
+**Key Files Modified:**
+- `testing/docker-images/ansible-controller/Dockerfile`: Updated from Dockerfile.ttyd
+- `testing/Taskfile.yml`: Removed Wetty tasks, renamed ttyd tasks to terminal tasks
+- `testing/README.md`: Updated to reflect ttyd as the default terminal
+
+**Verified Working:**
+```bash
+task controller:build  # Builds ansible-controller with ttyd
+task lab-create       # Creates lab with ttyd terminal
+task terminal:health  # Confirms ttyd is working properly
+```
+
+**Next Sprint Ready:** Full Splunk deployment testing with standardized web terminal
+
+### 2025-08-29 - Web Terminal Replacement: ttyd Implementation ✅
+**Goal:** Replace Wetty with ttyd for a more stable and maintained web terminal solution
+
+**Scope:**
+- Implement ttyd as a replacement for Wetty in the ansible-controller container
+- Configure nginx for ttyd access at the same endpoint
+- Create systemd service for ttyd management
+- Ensure compatibility with existing infrastructure
+- Fix security and interactivity issues
+
+**Tasks Completed:**
+- ✅ **Research Alternatives** - Evaluated multiple web terminal options (ttyd, Shell In A Box, GateOne)
+- ✅ **Maintenance Verification** - Confirmed ttyd is actively maintained (latest release March 2024)
+- ✅ **Dockerfile Creation** - Created new Dockerfile.ttyd with ttyd implementation
+- ✅ **Service Configuration** - Created systemd service file for ttyd
+- ✅ **Nginx Configuration** - Created nginx configuration for ttyd access
+- ✅ **Security Hardening** - Fixed direct access to ttyd by binding to localhost only
+- ✅ **Terminal Interactivity** - Added --writable flag to enable input in ttyd terminal
+- ✅ **External Access** - Updated nginx configuration to accept connections from all interfaces
+- ✅ **Authentication Security** - Configured ttyd to use SSH for proper authentication
+
+**Technical Achievements:**
+- Selected ttyd for its active maintenance, C-based implementation, and xterm.js frontend
+- Eliminated JavaScript dependency issues by using a compiled C application
+- Maintained compatibility with existing nginx configuration and port mapping
+- Configured ttyd with appropriate terminal settings (font size, theme)
+- Simplified deployment by using direct compilation from source
+- Fixed port conflict between ttyd and nginx (ttyd on 7681, nginx on 3000)
+- Secured ttyd by binding only to localhost and using nginx as a reverse proxy
+- Enabled terminal interactivity with the --writable flag
+- Implemented SSH authentication for ttyd to require password login
+
+**Key Files Modified:**
+- `testing/docker-images/ansible-controller/Dockerfile.ttyd`: New Dockerfile for ttyd implementation
+- `testing/docker-images/ansible-controller/ttyd.service`: Updated service to bind to localhost and enable writable mode
+- `testing/docker-images/ansible-controller/ttyd.nginx.conf`: Updated nginx configuration to proxy to ttyd on port 7681
+
+**Verified Working:**
+```bash
+# Build the new container with ttyd
+docker build -t ansible-controller:ttyd -f Dockerfile.ttyd .
+
+# Access ttyd at http://localhost:3000/ttyd after container deployment
+# Terminal is fully interactive and secure
+```
+
+**Next Sprint Ready:** Full Splunk deployment testing with secure and interactive web terminal
+
+### 2025-08-28 - Wetty JavaScript Errors Fix ✅
+**Goal:** Fix Wetty web terminal JavaScript errors and ensure full functionality
+
+**Scope:**
+- Resolve JavaScript errors in Wetty web terminal
+- Ensure terminal prompt appears correctly
+- Maintain compatibility with nginx configuration
+
+**Tasks Completed:**
+- ✅ **Root Cause Analysis** - Identified JavaScript errors in Wetty 2.6.0
+- ✅ **Version Testing** - Tested older versions of Wetty for compatibility
+- ✅ **Configuration Fix** - Downgraded Wetty to version 2.4.0 which resolves the errors
+- ✅ **Documentation** - Updated Dockerfile with the working version
+
+**Technical Achievements:**
+- Resolved JavaScript errors related to undefined properties
+- Fixed terminal functionality while maintaining nginx configuration
+- Identified stable version of Wetty for the container environment
+- Tested newer versions (2.7.0) but found FontAwesome module errors (`Uncaught TypeError: Failed to resolve module specifier "@fortawesome/fontawesome-svg-core"`)
+- Confirmed 2.4.0 as the most stable version for our environment
+
+**Key Files Modified:**
+- `testing/docker-images/ansible-controller/Dockerfile`: Updated Wetty version from 2.6.0 to 2.4.0
+
+**Verified Working:**
+```bash
+task wetty:health  # Confirms HTTP 200 response from Wetty endpoint
+# Wetty accessible at http://localhost:3000/wetty with working terminal prompt
+```
+
+**Next Sprint Ready:** Full Splunk deployment testing with fully functional web terminal
+
+---
+
 ### 2025-08-28 - Wetty Nginx Hostname Fix ✅
 **Goal:** Fix Wetty web terminal hostname resolution issue in nginx configuration
 
@@ -43,19 +197,22 @@ command example
 **Tasks Completed:**
 - ✅ **Root Cause Analysis** - Identified nginx listening only on IPv6 interface
 - ✅ **Configuration Fix** - Updated nginx to listen on both IPv4 and IPv6 interfaces
+- ✅ **Directory Structure Fix** - Added task to ensure nginx sites directories exist
 - ✅ **Documentation** - Added comments to clarify hostname handling
 
 **Technical Achievements:**
 - Fixed nginx configuration to support both IPv4 and IPv6 connections
+- Ensured nginx sites directories exist before configuration
 - Ensured hostname resolution works properly in container environment
 - Maintained compatibility with existing Docker networking setup
 
 **Key Files Modified:**
-- `testing/molecule/lab/prepare.yml`: Updated nginx configuration template
+- `testing/molecule/lab/prepare.yml`: Updated nginx configuration template and added directory creation task
 
 **Verified Working:**
 ```bash
 task lab-create     # Creates containers with fixed nginx config
+task wetty:health  # Confirms HTTP 200 response from Wetty endpoint
 # Wetty accessible at http://localhost:3000/wetty
 ```
 

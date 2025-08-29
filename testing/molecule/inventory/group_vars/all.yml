@@ -50,10 +50,6 @@ splunk_version: 9.1.2
 splunk_package_url_full: "https://download.splunk.com/products/splunk/releases/9.1.2/linux/splunk-9.1.2-b6b9c8185839-Linux-x86_64.tgz"
 splunk_package_url_uf: "https://download.splunk.com/products/universalforwarder/releases/9.1.2/linux/splunkforwarder-9.1.2-b6b9c8185839-Linux-x86_64.tgz"
 
-# Container testing overrides - skip problematic tasks
-# acl packages are pre-installed in base images, skip installation
-skip_acl_install: true
-
 # Lab environment configuration
 # Note: remoteit-jumpbox has been removed from the lab configuration
 # SSH connectivity is now directly between containers via Docker network
