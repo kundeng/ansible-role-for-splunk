@@ -7,9 +7,9 @@ driver:
   name: docker
 
 platforms:
-  # Web Terminal Ansible Controller - includes wetty for web access
+  # Web Terminal Ansible Controller - includes web terminal access (ttyd)
   - name: ansible-controller
-    image: splunk-ansible-controller:latest
+    image: ${ANSIBLE_CONTROLLER_IMAGE:-splunk-ansible-controller:latest}
     pre_build_image: true
     privileged: true
     cgroupns_mode: host
@@ -20,7 +20,7 @@ platforms:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
-      - splunk-ws:/workspace:rw
+      - ${HOST_PROJECT_DIRECTORY}:/workspace:rw
     tmpfs:
       - /run
       - /tmp
@@ -31,24 +31,7 @@ platforms:
     ansible_connection: docker
     ansible_user: root
 
-  # Remote.it Jumpbox for external access (conditionally created)
-  - name: remoteit-jumpbox
-    image: remoteit/docker-extension:latest
-    pre_build_image: true
-    privileged: true
-    pull_policy: always
-    networks:
-      - name: splunk-test-network
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    env:
-      R3_REGISTRATION_CODE: "${R3_REGISTRATION_CODE:-unset}"
-    command: ["/startup.sh", "/sbin/init"]
-    restart_policy: unless-stopped
-    groups:
-      - jumpbox
-    ansible_connection: docker
-    ansible_user: root
+  # Remote.it Jumpbox removed as it's not needed
 
   # Core cluster infrastructure (all use docker connections for bootstrap)
   - name: splunk-master
