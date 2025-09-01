@@ -5,6 +5,8 @@
 
 version: '3'
 
+dotenv: ['.env']
+
 env:
 
 vars:
@@ -47,11 +49,11 @@ tasks:
       - chmod 644 .secrets/id_rsa.pub
 
   download:splunk:
-    desc: Download Splunk binaries for testing (deprecated - use remote URLs)
+    desc: "Download Splunk binaries for testing (deprecated - use remote URLs)"
     dir: "{{.PROJECT_ROOT}}/testing"
     cmds:
       - echo "⚠️  Download task deprecated - Splunk binaries now fetched via remote URLs in inventory"
-      - echo "   See: testing/molecule/inventory/group_vars/all.yml"
+      - echo "   See testing/molecule/inventory/group_vars/all.yml"
 
   # === MOLECULE SCENARIOS ===
   # These map directly to testing/molecule/ scenario directories
@@ -331,6 +333,9 @@ tasks:
     desc: "Start Remote.it jumpbox for external access"
     cmds:
       - |
+        if [ -f .env ]; then
+          export $(grep -v '^#' .env | xargs)
+        fi
         if [ -n "$R3_REGISTRATION_CODE" ]; then
           echo "🚀 Starting Remote.it jumpbox..."
           docker run -d \
@@ -357,7 +362,7 @@ tasks:
   remoteit:status:
     desc: "Show Remote.it jumpbox status"
     cmds:
-      - docker ps --filter name=remoteit_docker_jumpbox --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+      - docker ps --filter name=remoteit_docker_jumpbox --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
 
   # === WORKFLOWS ===
   workflow:full:
