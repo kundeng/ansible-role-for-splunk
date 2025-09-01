@@ -86,37 +86,42 @@ task day1:test          # Run complete operations scenario (when implemented)
 
 ## 🌐 External Access (Optional)
 
-Enable external access to your testing environment using Remote.it:
+Enable external access to your testing environment using Twingate:
 
 ### Setup
-1. Get registration code from [remote.it](https://remote.it)
-2. Set in `.env`: `R3_REGISTRATION_CODE=your-code-here`
-3. Start with remote access: `task remoteit:start`
+1. Get your Twingate network name and access tokens from your Twingate admin
+2. Set in `.env`:
+   ```bash
+   TWINGATE_NETWORK=your-network-name
+   TWINGATE_ACCESS_TOKEN=your-access-token
+   TWINGATE_REFRESH_TOKEN=your-refresh-token
+   ```
+3. Start with remote access: `task twingate:start`
 
 ### Usage
 ```bash
-# Start Remote.it jumpbox
-task remoteit:start
+# Start Twingate connector
+task twingate:start
 
 # Check status
-task remoteit:status
+task twingate:status
 
-# Stop Remote.it jumpbox
-task remoteit:stop
+# Stop Twingate connector
+task twingate:stop
 ```
 
 ### Integration with Testing
-Remote.it can be integrated with your testing workflow:
+Twingate can be integrated with your testing workflow:
 ```bash
 # Start testing with remote access
-task lab:test && task remoteit:start
+task lab:test && task twingate:start
 
-# Access via Remote.it dashboard when containers are running
+# Access via Twingate when containers are running
 # Stop everything when done
-task lab:destroy && task remoteit:stop
+task lab:destroy && task twingate:stop
 ```
 
-**Note:** Remote.it provides secure external access to your testing environment. The jumpbox container runs independently and can be started/stopped as needed.
+**Note:** Twingate provides secure, zero-trust network access to your testing environment. The connector runs independently and can be started/stopped as needed.
 
 ## 🛠️ Usage
 

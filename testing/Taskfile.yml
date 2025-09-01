@@ -329,40 +329,44 @@ tasks:
       - docker exec -it {{.CLI_ARGS}} bash
 
   # === REMOTE ACCESS ===
-  remoteit:start:
-    desc: "Start Remote.it jumpbox for external access"
+  twingate:start:
+    desc: "Start Twingate connector for external access"
     cmds:
       - |
         if [ -f .env ]; then
           export $(grep -v '^#' .env | xargs)
         fi
-        if [ -n "$R3_REGISTRATION_CODE" ]; then
-          echo "🚀 Starting Remote.it jumpbox..."
+        if [ -n "$TWINGATE_NETWORK" ] && [ -n "$TWINGATE_ACCESS_TOKEN" ]; then
+          echo "🚀 Starting Twingate connector..."
           docker run -d \
-            -e R3_REGISTRATION_CODE="$R3_REGISTRATION_CODE" \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            --restart unless-stopped \
-            --name remoteit_docker_jumpbox \
-            --pull always \
-            remoteit/docker-extension:latest
-          echo "✅ Remote.it jumpbox started!"
-          echo "📋 Check status: docker logs remoteit_docker_jumpbox"
+            --sysctl net.ipv4.ping_group_range="0 2147483647" \
+            --env TWINGATE_NETWORK="$TWINGATE_NETWORK" \
+            --env TWINGATE_ACCESS_TOKEN="$TWINGATE_ACCESS_TOKEN" \
+            --env TWINGATE_REFRESH_TOKEN="$TWINGATE_REFRESH_TOKEN" \
+            --env TWINGATE_LABEL_HOSTNAME="`hostname`" \
+            --env TWINGATE_LABEL_DEPLOYED_BY="docker" \
+            --name "twingate-connector" \
+            --restart=unless-stopped \
+            --pull=always \
+            twingate/connector:1
+          echo "✅ Twingate connector started!"
+          echo "📋 Check status: docker logs twingate-connector"
         else
-          echo "⚠️  R3_REGISTRATION_CODE not set, skipping Remote.it setup"
+          echo "⚠️  TWINGATE_NETWORK or TWINGATE_ACCESS_TOKEN not set, skipping Twingate setup"
         fi
 
-  remoteit:stop:
-    desc: "Stop Remote.it jumpbox"
+  twingate:stop:
+    desc: "Stop Twingate connector"
     cmds:
-      - echo "🛑 Stopping Remote.it jumpbox..."
-      - docker stop remoteit_docker_jumpbox || true
-      - docker rm remoteit_docker_jumpbox || true
-      - echo "✅ Remote.it jumpbox stopped!"
+      - echo "🛑 Stopping Twingate connector..."
+      - docker stop twingate-connector || true
+      - docker rm twingate-connector || true
+      - echo "✅ Twingate connector stopped!"
 
-  remoteit:status:
-    desc: "Show Remote.it jumpbox status"
+  twingate:status:
+    desc: "Show Twingate connector status"
     cmds:
-      - docker ps --filter name=remoteit_docker_jumpbox --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+      - docker ps --filter name=twingate-connector --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
 
   # === WORKFLOWS ===
   workflow:full:
