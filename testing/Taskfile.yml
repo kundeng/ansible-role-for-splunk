@@ -1,6 +1,7 @@
 # Splunk Testing Framework Task Runner
-# Architecture: 2-phase testing with bootstrap infrastructure + Splunk role testing
-# Requirements: Docker only (all tools containerized)
+# Architecture: Molecule-based scenarios (lab/day0/day1) with containerized execution
+# Requirements: Docker only (all tools run in containers)
+# Organization: setup:* (environment), lab:* (infrastructure), day0:* (deployment), day1:* (operations), workflow:* (combined cycles)
 
 version: '3'
 
@@ -16,15 +17,15 @@ tasks:
     cmds:
       - task --list
       
-  # === SYSTEM UTILITIES ===
-  sys:setup:
-    desc: Setup environment (secrets and images)
+  # === ENVIRONMENT SETUP ===
+  setup:
+    desc: Complete environment setup (secrets + images)
     cmds:
-      - task: sys:secrets
-      - task: sys:imaging
+      - task: setup:secrets
+      - task: setup:images
       - echo "✅ Environment setup complete!"
 
-  sys:imaging:
+  setup:images:
     desc: Build all Docker images required for testing
     cmds:
       - echo "🔧 Building Splunk testing framework images..."
@@ -34,28 +35,8 @@ tasks:
       - docker build -t splunk-git-server:latest {{.DOCKER_IMAGES_DIR}}/gitlab/
       - docker build -t molecule-runner:latest {{.DOCKER_IMAGES_DIR}}/molecule-runner/
       - echo "✅ All images built successfully!"
-      
-  sys:download:
-    desc: Download Splunk binaries for testing
-    dir: "{{.PROJECT_ROOT}}/testing"
-    cmds:
-      - mkdir -p software
-      - |
-        if [ ! -f software/splunk-9.0.4-de405f4a7979-Linux-x86_64.tgz ]; then
-          echo "📥 Downloading Splunk Enterprise..."
-          curl -L -o software/splunk-9.0.4-de405f4a7979-Linux-x86_64.tgz "https://download.splunk.com/products/splunk/releases/9.0.4/linux/splunk-9.0.4-de405f4a7979-Linux-x86_64.tgz" || echo "⚠️ Download failed, please download manually"
-        else
-          echo "✅ Splunk Enterprise already downloaded"
-        fi
-      - |
-        if [ ! -f software/splunkforwarder-9.0.4-de405f4a7979-Linux-x86_64.tgz ]; then
-          echo "📥 Downloading Splunk Universal Forwarder..."
-          curl -L -o software/splunkforwarder-9.0.4-de405f4a7979-Linux-x86_64.tgz "https://download.splunk.com/products/universalforwarder/releases/9.0.4/linux/splunkforwarder-9.0.4-de405f4a7979-Linux-x86_64.tgz" || echo "⚠️ Download failed, please download manually"
-        else
-          echo "✅ Splunk Universal Forwarder already downloaded"
-        fi
 
-  sys:secrets:
+  setup:secrets:
     desc: Create testing/.secrets directory with SSH keys and password
     dir: "{{.PROJECT_ROOT}}/testing"
     cmds:
@@ -65,12 +46,21 @@ tasks:
       - chmod 600 .secrets/id_rsa .secrets/ansible_password
       - chmod 644 .secrets/id_rsa.pub
 
-  # === LAB SCENARIO ===
-  lab:
-    desc: Create and setup complete lab infrastructure
+  download:splunk:
+    desc: Download Splunk binaries for testing (deprecated - use remote URLs)
+    dir: "{{.PROJECT_ROOT}}/testing"
     cmds:
-      - task: sys:setup
-      - echo "Creating complete lab infrastructure..."
+      - echo "⚠️  Download task deprecated - Splunk binaries now fetched via remote URLs in inventory"
+      - echo "   See: testing/molecule/inventory/group_vars/all.yml"
+
+  # === MOLECULE SCENARIOS ===
+  # These map directly to testing/molecule/ scenario directories
+
+  lab:test:
+    desc: Run complete lab scenario (create → prepare → converge → verify → destroy)
+    cmds:
+      - task: setup
+      - echo "🧪 Running complete lab scenario..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -79,13 +69,13 @@ tasks:
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
           molecule test -s lab
-      - echo "✅ Lab infrastructure ready!"
+      - echo "✅ Lab scenario complete!"
       - echo "Access web terminal at http://localhost:3000/ttyd"
 
   lab:create:
-    desc: Create lab containers and setup SSH keys
+    desc: Create lab containers (molecule create -s lab)
     cmds:
-      - task: sys:setup
+      - task: setup
       - echo "📦 Creating lab containers..."
       - |
         docker run --rm \
@@ -97,10 +87,10 @@ tasks:
           molecule create -s lab
 
   lab:prepare:
-    desc: Prepare lab (runs testing/molecule/lab/prepare.yml)
+    desc: Prepare lab infrastructure (molecule prepare -s lab)
     cmds:
-      - task: sys:setup
-      - echo "🧩 Preparing lab..."
+      - task: setup
+      - echo "🧩 Preparing lab infrastructure..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -109,15 +99,11 @@ tasks:
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
           molecule prepare -s lab
-          
-  lab:run:
-    desc: Create, prepare, and converge lab without destroying containers
+
+  lab:converge:
+    desc: Run lab converge (molecule converge -s lab)
     cmds:
-      - task: sys:setup
-      - echo "🚀 Creating and setting up lab infrastructure..."
-      - task: lab:create
-      - task: lab:prepare
-      - echo "🔄 Running converge step..."
+      - echo "🔄 Running lab converge..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -126,11 +112,23 @@ tasks:
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
           molecule converge -s lab
-      - echo "✅ Lab infrastructure ready!"
-      - echo "Access web terminal at http://localhost:3000/ttyd"
+      - echo "✅ Lab converge complete!"
+
+  lab:verify:
+    desc: Verify lab deployment (molecule verify -s lab)
+    cmds:
+      - echo "🔍 Verifying lab deployment..."
+      - |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
+          molecule-runner:latest \
+          molecule verify -s lab
 
   lab:destroy:
-    desc: Destroy lab infrastructure
+    desc: Destroy lab infrastructure (molecule destroy -s lab)
     cmds:
       - echo "💥 Destroying lab infrastructure..."
       - |
@@ -141,19 +139,32 @@ tasks:
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
           molecule destroy -s lab
-          
+
   lab:status:
-    desc: Show status of lab containers on the splunk-test-network
+    desc: Show status of lab containers
     cmds:
-      - echo "📋 Containers on splunk-test-network" 
+      - echo "📋 Lab containers status:"
       - docker ps --filter network=splunk-test-network --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
 
-  # === DAY0 SCENARIO ===
-  day0:
-    desc: Day 0 - Deploy Splunk via SSH (initial provisioning)
+  day0:test:
+    desc: Run complete Day 0 scenario (converge → verify)
     cmds:
-      - task: sys:setup
-      - echo "🚀 Day 0 - Deploying Splunk (initial provisioning)..."
+      - task: setup
+      - echo "🚀 Day 0 - Running complete Splunk deployment scenario..."
+      - |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
+          molecule-runner:latest \
+          molecule test -s day0
+      - echo "✅ Day 0 scenario complete!"
+
+  day0:converge:
+    desc: Deploy Splunk via SSH (molecule converge -s day0)
+    cmds:
+      - echo "🚀 Day 0 - Deploying Splunk via SSH..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -162,23 +173,10 @@ tasks:
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
           molecule converge -s day0
-      - echo "✅ Day 0 provisioning complete!"
-
-  day0:deploy:
-    desc: Day 0 - Deploy Splunk role directly via ansible-playbook (assumes lab exists)
-    cmds:
-      - echo "🚀 Day 0 - Deploying Splunk via ansible-playbook..."
-      - |
-        docker run --rm \
-          --network splunk-test-network \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          -v {{.PROJECT_ROOT}}:/workspace \
-          -w /workspace \
-          molecule-runner:latest \
-          bash -c "ansible-galaxy collection install community.general && ansible-playbook -i testing/molecule/inventory/hosts.yml playbooks/splunk_install_or_upgrade.yml"
+      - echo "✅ Day 0 deployment complete!"
 
   day0:verify:
-    desc: Day 0 - Verify Splunk deployment only
+    desc: Verify Splunk deployment (molecule verify -s day0)
     cmds:
       - echo "🔍 Day 0 - Verifying Splunk deployment..."
       - |
@@ -190,12 +188,24 @@ tasks:
           molecule-runner:latest \
           molecule verify -s day0
 
-  # === DAY1 SCENARIO ===
-  day1:
-    desc: Day 1 - Operational tasks on running Splunk cluster
+  day0:playbook:
+    desc: Deploy Splunk directly via ansible-playbook (bypasses molecule)
     cmds:
-      - task: sys:setup
-      - echo "🔧 Day 1 - Running operational tasks..."
+      - echo "🚀 Day 0 - Deploying Splunk via direct ansible-playbook..."
+      - |
+        docker run --rm \
+          --network splunk-test-network \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace \
+          molecule-runner:latest \
+          bash -c "ansible-galaxy collection install community.general && ansible-playbook -i testing/molecule/inventory/hosts.yml playbooks/splunk_install_or_upgrade.yml"
+
+  day1:test:
+    desc: Run complete Day 1 scenario (converge → verify)
+    cmds:
+      - task: setup
+      - echo "🔧 Day 1 - Running complete operations scenario..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -204,11 +214,38 @@ tasks:
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
           molecule test -s day1
+      - echo "✅ Day 1 scenario complete!"
+
+  day1:converge:
+    desc: Run Day 1 operations (molecule converge -s day1)
+    cmds:
+      - echo "🔧 Day 1 - Running operational tasks..."
+      - |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
+          molecule-runner:latest \
+          molecule converge -s day1
       - echo "✅ Day 1 operations complete!"
 
+  day1:verify:
+    desc: Verify Day 1 operations (molecule verify -s day1)
+    cmds:
+      - echo "🔍 Day 1 - Verifying operational tasks..."
+      - |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
+          molecule-runner:latest \
+          molecule verify -s day1
+
   # === DIAGNOSTICS ===
-  sys:diag:ttyd:
-    desc: Diagnose ttyd and nginx health (host and inside ansible-controller)
+  diag:terminal:
+    desc: Diagnose ttyd and nginx health
     cmds:
       - |
           echo "🌐 Host check http://localhost:3000/ttyd"
@@ -217,7 +254,7 @@ tasks:
           else
             echo "curl not found, skipping host check"
           fi
-          
+
           docker exec ansible-controller bash -c '
             echo "-- systemctl status ttyd --"; systemctl is-enabled ttyd || true; systemctl is-active ttyd || true; systemctl status --no-pager ttyd | sed -n "1,12p" || true
             echo "-- systemctl status nginx --"; systemctl is-enabled nginx || true; systemctl is-active nginx || true; systemctl status --no-pager nginx | sed -n "1,12p" || true
@@ -226,8 +263,8 @@ tasks:
             echo "-- curl localhost:3000/ttyd (nginx proxy) --"; (curl -sS -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:3000/ttyd || true)
             echo "-- nginx configtest --"; nginx -t || true
           '
-          
-  sys:diag:ssh:
+
+  diag:ssh:
     desc: Test SSH connectivity to all hosts in the lab
     cmds:
       - echo "🔍 Testing SSH connectivity to all hosts"
@@ -246,9 +283,9 @@ tasks:
           done
         '
 
-  # === SYSTEM UTILITIES ===
-  sys:controller:
-    desc: Start the ansible-controller container and open a shell
+  # === UTILITIES ===
+  controller:start:
+    desc: Start the ansible-controller container
     cmds:
       - echo "🚀 Starting ansible-controller..."
       - |
@@ -261,17 +298,21 @@ tasks:
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           splunk-ansible-controller:latest
       - echo "✅ Controller started!"
-      - echo "Access controller at http://localhost:3000/ttyd"
+      - echo "Access web terminal at http://localhost:3000/ttyd"
+
+  controller:shell:
+    desc: Shell into ansible-controller container
+    cmds:
       - docker exec -it ansible-controller bash
 
-  sys:status:
+  status:
     desc: Show status of all containers on splunk-test-network
     cmds:
-      - echo "📋 Containers on splunk-test-network" 
+      - echo "📋 Containers on splunk-test-network"
       - docker ps --filter network=splunk-test-network --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
-      
-  sys:reset:
-    desc: Reset everything (destroy lab + clean Docker)
+
+  reset:
+    desc: Reset everything (destroy lab + clean Docker resources)
     cmds:
       - task: lab:destroy
       - echo "💥 Removing all containers and images..."
@@ -280,23 +321,30 @@ tasks:
       - docker volume rm splunk-ws 2>/dev/null || true
       - echo "✅ Reset complete!"
 
-  sys:shell:
-    desc: "Shell into container (usage - task sys:shell -- container-name)"
+  shell:
+    desc: Shell into container (usage: task shell -- container-name)
     cmds:
       - docker exec -it {{.CLI_ARGS}} bash
 
   # === WORKFLOWS ===
-  workflow:full-test:
-    desc: Complete end-to-end test (lab + day0 + day1)
+  workflow:full:
+    desc: Complete end-to-end workflow (lab → day0 → day1)
     cmds:
-      - task: lab
-      - task: day0
-      - task: day1
-      - echo "🎉 Complete end-to-end testing finished!"
+      - task: lab:test
+      - task: day0:test
+      - task: day1:test
+      - echo "🎉 Complete end-to-end workflow finished!"
+
+  workflow:quick:
+    desc: Quick development cycle (lab + day0 only)
+    cmds:
+      - task: lab:test
+      - task: day0:test
+      - echo "✅ Quick development cycle complete!"
 
   # === DEVELOPMENT UTILITIES ===
-  molecule:shell:
-    desc: "Interactive shell in molecule-runner container"
+  dev:shell:
+    desc: Interactive shell in molecule-runner container
     cmds:
       - |
         docker run --rm -it \
@@ -306,3 +354,12 @@ tasks:
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
           bash
+
+  dev:cleanup:
+    desc: Clean up Docker resources (containers, volumes, networks)
+    cmds:
+      - echo "🧹 Cleaning up Docker resources..."
+      - docker system prune -f
+      - docker volume prune -f
+      - docker network prune -f
+      - echo "✅ Cleanup complete!"

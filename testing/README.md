@@ -34,7 +34,7 @@ This framework serves multiple use cases:
 
 ### Prerequisites
 - Docker with 32GB+ RAM allocated (64GB+ recommended)
-- 8+ CPU cores (16+ recommended)  
+- 8+ CPU cores (16+ recommended)
 - [Task](https://taskfile.dev) command runner (installed automatically)
 
 ### Setup Process
@@ -46,63 +46,91 @@ cd ansible-role-for-splunk/testing
 cp .env.example .env
 # Edit .env and add your Remote.it registration code if needed
 
-task setup              # Provision host secrets + build all Docker images
+task setup              # Complete environment setup (secrets + images)
 ```
 
-## ▶️ Next Phase: Day 0
+## ▶️ Development Workflow
 
-The lab is stabilized and ready for Day 0 provisioning.
+The testing framework follows a structured approach with three main phases:
 
-- Inventory source of truth: `/workspace/testing/molecule/inventory/hosts.yml`
-- SSH diagnostics: `task sys:diag:ssh` targets group `full` (excludes `git_server`)
-- Artifacts: fetched via URLs defined in `molecule/inventory/group_vars/all.yml` (9.1.2)
-- ACL: `skip_acl_install: true` to speed up container tests
+### Phase 1: Lab Infrastructure (SSH Setup)
+```bash
+task lab:test           # Run complete lab scenario (create → prepare → verify)
+# OR step-by-step:
+task lab:create         # Create containers
+task lab:prepare        # Setup SSH connectivity
+task lab:verify         # Verify infrastructure
+```
 
-Proceed with Day 0 using the Taskfile Day 0 targets. Refer to `testing/Taskfile.yml` for the exact Day 0 task names in this branch.
+### Phase 2: Day 0 - Splunk Deployment
+```bash
+task day0:test          # Run complete deployment scenario
+# OR step-by-step:
+task day0:converge      # Deploy Splunk via SSH
+task day0:verify        # Verify deployment
+```
+
+### Phase 3: Day 1 - Operations (Planned)
+```bash
+task day1:test          # Run complete operations scenario (when implemented)
+```
+
+**Key Points:**
+- Inventory source of truth: `testing/molecule/inventory/hosts.yml`
+- SSH diagnostics: `task diag:ssh` targets group `full` (excludes `git_server`)
+- Artifacts: Fetched via remote URLs in `testing/molecule/inventory/group_vars/all.yml`
+- ACL: `skip_acl_install: true` for faster container testing
 
 **Optional Environment Variables:**
 - `R3_REGISTRATION_CODE` - Get your free registration code from [remote.it](https://remote.it) for external access
 
 ## 🛠️ Usage
 
-### ✅ Primary Commands (Streamlined)
+### ✅ Primary Commands (Updated for Current Taskfile)
 ```bash
-task lab-create         # Create 12-container lab infrastructure + SSH setup (runs setup:ensure)
-task day0-deploy        # Deploy Splunk via SSH (connectivity verified)
-task status            # Show all container status
-task lab-destroy       # Clean shutdown
+task setup              # Complete environment setup (secrets + images)
+task lab:test           # Run complete lab scenario (infrastructure + SSH)
+task day0:test          # Run complete Splunk deployment scenario
+task status             # Show all container status
+task lab:destroy        # Clean shutdown
 ```
 
 ### 🔄 Lab Infrastructure Management
 ```bash
-task lab-create         # Create containers and setup SSH connectivity (runs setup:ensure)
-task lab-destroy        # Destroy lab infrastructure
-task status            # Show container status and health
-task reset             # Full cleanup (containers + volumes + networks)
+task lab:create         # Create containers
+task lab:prepare        # Setup SSH connectivity
+task lab:converge       # Run infrastructure setup
+task lab:verify         # Verify lab deployment
+task lab:destroy        # Destroy lab infrastructure
+task lab:status         # Show lab containers status
 ```
 
-> Note: `lab-destroy` removes containers and the scenario network but intentionally does not delete named Docker volumes (e.g., Splunk data volumes, ssh-keys). Use `task reset` between full test runs to minimize cross-run interference.
+> Note: `lab:destroy` removes containers and the scenario network but intentionally does not delete named Docker volumes (e.g., Splunk data volumes, ssh-keys). Use `task reset` between full test runs to minimize cross-run interference.
 
 ### 🚀 Day 0 - Splunk Provisioning (SSH Architecture Working ✅)
 ```bash
-task day0-deploy        # Deploy Splunk role via SSH to existing lab
-task day0-verify        # Verify Splunk deployment (in progress)
+task day0:converge      # Deploy Splunk via SSH to existing lab
+task day0:verify        # Verify Splunk deployment
+task day0:playbook      # Direct ansible-playbook deployment (bypasses molecule)
 ```
 
 ### 🔧 Day 1 - Operations (Planned)
 ```bash
-task day1               # Operational tasks on running cluster (planned)
+task day1:test          # Complete operations scenario (when implemented)
+task day1:converge      # Run operational tasks
+task day1:verify        # Verify operations
 ```
 
 ### 🛠️ Development Utilities
 ```bash
-task build-images       # Build all Docker base images
-task logs -- <container>    # View container logs
-task shell -- <container>   # Shell into container
-task verify-ssh         # Test SSH connectivity between containers
+task setup:images       # Build all Docker base images
+task diag:ssh           # Test SSH connectivity between containers
+task diag:terminal      # Check ttyd and nginx health
+task controller:start   # Start ansible-controller container
 task controller:shell   # Shell into ansible-controller
-task lab-status         # Show lab containers on splunk-test-network
-task terminal:health    # Check ttyd health and accessibility
+task shell -- <container>   # Shell into any container
+task dev:shell          # Interactive shell in molecule-runner
+task dev:cleanup        # Clean up Docker resources
 ```
 
 **Current Status:** SSH architecture fixed across Ubuntu and AlmaLinux. Lab creation working. Inventory validated. SSH diagnostics target `full` (git_server excluded). Artifacts fetched via remote URLs. ACL install skipped for container tests. PAM/login gating stabilized.
@@ -121,8 +149,8 @@ Access the web terminal at `http://localhost:3000/ttyd`:
 
 The testing framework uses ttyd as the web terminal:
 ```bash
-task lab-create         # Creates lab with ttyd terminal
-task terminal:health    # Check ttyd health and accessibility
+task lab:test           # Creates lab with ttyd terminal
+task diag:terminal      # Check ttyd and nginx health
 ```
 
 #### Why ttyd?
@@ -134,45 +162,54 @@ task terminal:health    # Check ttyd health and accessibility
 
 ## 🧪 Testing Scenarios
 
-### ✅ Current Working Workflow (Streamlined)
+### ✅ Current Working Workflow (Updated)
 ```bash
-# Step 1: Ensure prerequisites (secrets + images), destroy+create lab, run prepare
-task setup              # One-time: provision host secrets + build images
-task lab-recreate       # Idempotent: setup:ensure → destroy → create → prepare
+# Step 1: Environment setup (one-time)
+task setup              # Complete environment setup (secrets + images)
 
-# Step 2: Deploy Splunk (SSH connectivity verified, role integration pending)
-task day0-deploy        # SSH works, Splunk deployment needs role fixes
+# Step 2: Lab infrastructure
+task lab:test           # Run complete lab scenario (create → prepare → verify)
+# OR step-by-step:
+task lab:create         # Create containers
+task lab:prepare        # Setup SSH connectivity
+task lab:verify         # Verify infrastructure
 
-# Step 3: Check status
-task status            # All containers running properly ✅
+# Step 3: Splunk deployment
+task day0:test          # Run complete deployment scenario
+# OR step-by-step:
+task day0:converge      # Deploy Splunk via SSH
+task day0:verify        # Verify deployment
+
+# Step 4: Check status
+task status             # All containers running properly ✅
 ```
 
-### 🎯 Planned Workflow 
+### 🎯 Complete Development Workflow
 ```bash
-# Complete development workflow (planned)
-task lab-create         # Create lab infrastructure
-# Lab is created with ttyd by default
-task day0-deploy        # Deploy Splunk via SSH (fix role prerequisites)  
-task day0-verify        # Verify Splunk deployment health
-task day1               # Operations testing (restart, backup, maintenance)
+# Full end-to-end testing
+task workflow:full      # Complete workflow: lab → day0 → day1
 
-# Full end-to-end testing (planned)
-task full-test          # Complete automated test suite
+# Quick development cycle
+task workflow:quick     # Fast iteration: lab → day0 only
+
+# Individual scenario testing
+task lab:test           # Infrastructure testing
+task day0:test          # Deployment testing
+task day1:test          # Operations testing (when implemented)
 ```
 
-### Current Development Iteration
+### Current Development Status
 ```bash
 # Working development cycle
-task lab-create         # Create fresh lab environment  
-task day0-deploy        # Test SSH connectivity to all hosts ✅
-task status            # Verify all containers healthy ✅
-task lab-destroy       # Clean shutdown ✅
+task lab:test           # Create fresh lab environment ✅
+task day0:converge      # Test SSH connectivity to all hosts ✅
+task status             # Verify all containers healthy ✅
+task lab:destroy        # Clean shutdown ✅
 
-# Critical Fixes Sprint (active)
-# - SSH login gating repaired across distros (see PAM section below)
-# - Validate/repair sudo configuration
-# - Complete Splunk deployment testing (prereqs + runtime)
-# - Add verification and operations testing
+# Next priorities:
+# - Complete Splunk role integration (acl, sudo fixes)
+# - Implement day1 operations scenarios
+# - Add comprehensive verification playbooks
 ```
 
 ## 📊 Resource Requirements
@@ -191,35 +228,41 @@ task lab-destroy       # Clean shutdown ✅
 ## 🔧 Advanced Usage
 
 ### 🏗️ SSH Architecture (Sprint 3 Achievement)
-**Problem Solved:** SSH keys are generated in molecule-runner and distributed properly to all containers.
+**Problem Solved:** SSH keys are generated in setup phase and distributed properly to all containers.
 
 **Technical Details:**
-- SSH keys: Generated on `localhost` (molecule-runner) via `delegate_to: localhost`
-- Named volume: Keys persisted under `/shared/ssh_keys` (mounted into runner)
-- Key distribution: Public key pushed to all containers; private key never copied to hosts
-- Controller: Keys also copied to `/workspace/.ssh/` on `ansible-controller` for local SSH convenience
-- Ansible: Uses `/shared/ssh_keys/id_rsa` via `group_vars/all.yml`
+- SSH keys: Generated once via `task setup:secrets` → `testing/.secrets/id_rsa`
+- Project mount: Entire repo mounted to `/workspace` in molecule-runner container
+- Key access: Keys read directly from `/workspace/testing/.secrets/` using `delegate_to: localhost`
+- Key distribution: Public key pushed to all containers during `lab:prepare`; private key never copied to hosts
+- Controller: Keys copied to `/home/ansible/.ssh/` on `ansible-controller` for SSH authentication
+- Ansible: Uses `/home/ansible/.ssh/id_rsa` via `group_vars/all.yml`
 - Connectivity: SSH working from molecule-runner to all 12 Splunk containers
 - Network: Docker hostname resolution enabling realistic SSH-based testing
+- Reuse: Same keys persist across test runs for efficiency
 
-### 🔐 End-to-End Key Distribution Logic (Source of Truth = molecule-runner)
-1. Key generation
-   - `molecule/lab/prepare.yml` runs `openssh_keypair` on `localhost` (runner) → `/shared/ssh_keys/id_rsa`
-2. Publish and cache
-   - `slurp` reads `/shared/ssh_keys/id_rsa(.pub)` from localhost
-   - Private key stays in volume; public key is used for distribution
-3. Distribution to hosts
-   - Public key written to `/home/ansible/.ssh/authorized_keys` on every host
-   - Client config created to disable strict host key checking
+### 🔐 End-to-End Key Distribution Logic (Source of Truth = setup phase)
+1. Key generation (Setup Phase)
+   - `task setup:secrets` runs `ssh-keygen` → `testing/.secrets/id_rsa`
+   - Keys created once and reused across test runs
+2. Key access (Lab Phase)
+   - Project root mounted to `/workspace` in molecule-runner container
+   - Keys accessible at `/workspace/testing/.secrets/` (no special mounting needed)
+3. Distribution to hosts (Prepare Phase)
+   - `molecule/lab/prepare.yml` reads keys from host filesystem using `delegate_to: localhost`
+   - Public key copied to `/home/ansible/.ssh/authorized_keys` on every host
+   - SSH client config created to disable strict host key checking
 4. Controller convenience
-   - Both keys copied to `ansible-controller:/workspace/.ssh/` for interactive SSH
+   - Both keys copied to `ansible-controller:/home/ansible/.ssh/` for SSH authentication
+   - Enables ansible user on controller to SSH to other containers
 5. Ansible configuration
-   - `testing/molecule/inventory/group_vars/all.yml` sets `ansible_ssh_private_key_file: /shared/ssh_keys/id_rsa`
+   - `testing/molecule/inventory/group_vars/all.yml` sets `ansible_ssh_private_key_file: /home/ansible/.ssh/id_rsa`
 
 Guarantees:
-- No keys are baked into images
-- No per-scenario regeneration (lab prepares, later scenarios reuse)
-- Private key is never distributed to Splunk hosts
+- Keys generated once in setup phase for reuse across test runs
+- No keys baked into Docker images
+- Private key never distributed to Splunk hosts
+- Project mount enables direct host filesystem access
 
 ### 📁 Scenario Structure (Current Working)
 ```
@@ -301,16 +344,6 @@ Containerized systemd environments can block non-root SSH logins during early bo
 
 These changes are intentionally narrow, preserve distro defaults where possible, and are documented/reversible. The Splunk role under test remains untouched.
 
-### 🎯 Sprint 4 Status - Container User Management Fixed
-
-**Completed Issues:**
-- ✅ git-server SSH configuration (excluded from `all` group)
-- ✅ acl package installation (skipped via conditional)
-- ✅ duplicate user creation conflicts (removed from prepare.yml)
-- ✅ SSH key architecture (generate in molecule-runner, distribute properly)
-
-**Current Issue:**
-- 🚧 AlmaLinux PAM configuration for `ansible` user `sudo` in systemd containers
 
 ### Environment Persistence  
 The lab environment persists data between runs:
@@ -327,17 +360,18 @@ Use this environment to:
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch  
-3. Test SSH connectivity: `task lab-create && task day0-deploy`
-4. Verify changes work across all container types
-5. Submit pull request
+2. Create a feature branch
+3. Test changes: `task lab:test && task day0:test`
+4. Verify SSH connectivity: `task diag:ssh`
+5. Verify changes work across all container types
+6. Submit pull request
 
 ## 📖 Documentation
 
 - [CLAUDE.md](../CLAUDE.md) - Complete project documentation and current status
-- [SPRINT_LOG.md](SPRINT_LOG.md) - Sprint progress and technical achievements  
+- [PLAN.md](PLAN.md) - Development roadmap and sprint planning
 - [Molecule Testing Guide](https://ansible.readthedocs.io/projects/molecule/)
 
 ---
 
-**Status: SSH Architecture Fixed ✅ - ttyd Web Terminal Implemented ✅ - Ready for Splunk Role Integration**
+**Status: SSH Architecture Fixed ✅ - ttyd Web Terminal Implemented ✅ - Taskfile Reorganized ✅ - Ready for Splunk Role Integration**
