@@ -1,7 +1,7 @@
 ---
 # Example playbook to perform either a splunk installation or upgrade
 - hosts:
-    - full
+    - all
   roles:
     - ../roles/splunk
   serial: 50
