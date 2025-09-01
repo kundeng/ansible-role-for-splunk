@@ -340,6 +340,7 @@ tasks:
           echo "🚀 Starting Twingate connector..."
           docker run -d \
             --sysctl net.ipv4.ping_group_range="0 2147483647" \
+            --network splunk-test-network \
             --env TWINGATE_NETWORK="$TWINGATE_NETWORK" \
             --env TWINGATE_ACCESS_TOKEN="$TWINGATE_ACCESS_TOKEN" \
             --env TWINGATE_REFRESH_TOKEN="$TWINGATE_REFRESH_TOKEN" \
@@ -351,6 +352,7 @@ tasks:
             twingate/connector:1
           echo "✅ Twingate connector started!"
           echo "📋 Check status: docker logs twingate-connector"
+          echo "🌐 Connector connected to splunk-test-network for container access"
         else
           echo "⚠️  TWINGATE_NETWORK or TWINGATE_ACCESS_TOKEN not set, skipping Twingate setup"
         fi
@@ -366,7 +368,7 @@ tasks:
   twingate:status:
     desc: "Show Twingate connector status"
     cmds:
-      - docker ps --filter name=twingate-connector --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+      - docker ps --filter name=twingate-connector
 
   # === WORKFLOWS ===
   workflow:full:
