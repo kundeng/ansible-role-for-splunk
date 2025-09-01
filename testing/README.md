@@ -84,6 +84,40 @@ task day1:test          # Run complete operations scenario (when implemented)
 **Optional Environment Variables:**
 - `R3_REGISTRATION_CODE` - Get your free registration code from [remote.it](https://remote.it) for external access
 
+## 🌐 External Access (Optional)
+
+Enable external access to your testing environment using Remote.it:
+
+### Setup
+1. Get registration code from [remote.it](https://remote.it)
+2. Set in `.env`: `R3_REGISTRATION_CODE=your-code-here`
+3. Start with remote access: `task remoteit:start`
+
+### Usage
+```bash
+# Start Remote.it jumpbox
+task remoteit:start
+
+# Check status
+task remoteit:status
+
+# Stop Remote.it jumpbox
+task remoteit:stop
+```
+
+### Integration with Testing
+Remote.it can be integrated with your testing workflow:
+```bash
+# Start testing with remote access
+task lab:test && task remoteit:start
+
+# Access via Remote.it dashboard when containers are running
+# Stop everything when done
+task lab:destroy && task remoteit:stop
+```
+
+**Note:** Remote.it provides secure external access to your testing environment. The jumpbox container runs independently and can be started/stopped as needed.
+
 ## 🛠️ Usage
 
 ### ✅ Primary Commands (Updated for Current Taskfile)

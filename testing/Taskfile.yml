@@ -326,6 +326,39 @@ tasks:
     cmds:
       - docker exec -it {{.CLI_ARGS}} bash
 
+  # === REMOTE ACCESS ===
+  remoteit:start:
+    desc: Start Remote.it jumpbox for external access
+    cmds:
+      - |
+        if [ -n "$R3_REGISTRATION_CODE" ]; then
+          echo "🚀 Starting Remote.it jumpbox..."
+          docker run -d \
+            -e R3_REGISTRATION_CODE="$R3_REGISTRATION_CODE" \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            --restart unless-stopped \
+            --name remoteit_docker_jumpbox \
+            --pull always \
+            remoteit/docker-extension:latest
+          echo "✅ Remote.it jumpbox started!"
+          echo "📋 Check status: docker logs remoteit_docker_jumpbox"
+        else
+          echo "⚠️  R3_REGISTRATION_CODE not set, skipping Remote.it setup"
+        fi
+
+  remoteit:stop:
+    desc: Stop Remote.it jumpbox
+    cmds:
+      - echo "🛑 Stopping Remote.it jumpbox..."
+      - docker stop remoteit_docker_jumpbox || true
+      - docker rm remoteit_docker_jumpbox || true
+      - echo "✅ Remote.it jumpbox stopped!"
+
+  remoteit:status:
+    desc: Show Remote.it jumpbox status
+    cmds:
+      - docker ps --filter name=remoteit_docker_jumpbox --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+
   # === WORKFLOWS ===
   workflow:full:
     desc: Complete end-to-end workflow (lab → day0 → day1)
