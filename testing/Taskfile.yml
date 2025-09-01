@@ -245,7 +245,7 @@ tasks:
 
   # === DIAGNOSTICS ===
   diag:terminal:
-    desc: Diagnose ttyd and nginx health
+    desc: "Diagnose ttyd and nginx health"
     cmds:
       - |
           echo "🌐 Host check http://localhost:3000/ttyd"
@@ -265,7 +265,7 @@ tasks:
           '
 
   diag:ssh:
-    desc: Test SSH connectivity to all hosts in the lab
+    desc: "Test SSH connectivity to all hosts in the lab"
     cmds:
       - echo "🔍 Testing SSH connectivity to all hosts"
       - |
@@ -285,7 +285,7 @@ tasks:
 
   # === UTILITIES ===
   controller:start:
-    desc: Start the ansible-controller container
+    desc: "Start the ansible-controller container"
     cmds:
       - echo "🚀 Starting ansible-controller..."
       - |
@@ -301,7 +301,7 @@ tasks:
       - echo "Access web terminal at http://localhost:3000/ttyd"
 
   controller:shell:
-    desc: Shell into ansible-controller container
+    desc: "Shell into ansible-controller container"
     cmds:
       - docker exec -it ansible-controller bash
 
@@ -322,13 +322,13 @@ tasks:
       - echo "✅ Reset complete!"
 
   shell:
-    desc: Shell into container (usage: task shell -- container-name)
+    desc: "Shell into container (usage: task shell -- container-name)"
     cmds:
       - docker exec -it {{.CLI_ARGS}} bash
 
   # === REMOTE ACCESS ===
   remoteit:start:
-    desc: Start Remote.it jumpbox for external access
+    desc: "Start Remote.it jumpbox for external access"
     cmds:
       - |
         if [ -n "$R3_REGISTRATION_CODE" ]; then
@@ -347,7 +347,7 @@ tasks:
         fi
 
   remoteit:stop:
-    desc: Stop Remote.it jumpbox
+    desc: "Stop Remote.it jumpbox"
     cmds:
       - echo "🛑 Stopping Remote.it jumpbox..."
       - docker stop remoteit_docker_jumpbox || true
@@ -355,7 +355,7 @@ tasks:
       - echo "✅ Remote.it jumpbox stopped!"
 
   remoteit:status:
-    desc: Show Remote.it jumpbox status
+    desc: "Show Remote.it jumpbox status"
     cmds:
       - docker ps --filter name=remoteit_docker_jumpbox --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 
