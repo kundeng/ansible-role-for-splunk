@@ -53,13 +53,13 @@ task setup              # Complete environment setup (secrets + images)
 
 The testing framework follows a structured approach with three main phases:
 
-### Phase 1: Lab Infrastructure (SSH Setup)
+### Phase 1: Infrastructure Setup (Container Creation)
 ```bash
-task lab:test           # Run complete lab scenario (create → prepare → verify)
-# OR step-by-step:
-task lab:create         # Create containers
-task lab:prepare        # Setup SSH connectivity
-task lab:verify         # Verify infrastructure
+task infra:create       # Create all containers (9 Splunk + git-server)
+task infra:prepare      # Setup SSH infrastructure and services
+task infra:destroy      # Clean up all containers
+# OR complete workflow:
+task infra:test         # Run complete infrastructure scenario (create + prepare + verify)
 ```
 
 ### Phase 2: Day 0 - Splunk Deployment
@@ -83,6 +83,26 @@ task day1:test          # Run complete operations scenario (when implemented)
 
 **Optional Environment Variables:**
 - `R3_REGISTRATION_CODE` - Get your free registration code from [remote.it](https://remote.it) for external access
+
+## 🌐 Web Terminal Access
+
+After running `task infra:test`, access the web terminal at `http://localhost:3000/ttyd`:
+
+- **Web Terminal**: Direct shell access to ansible-controller container
+- **SSH Connectivity**: All Splunk containers accessible via SSH from the terminal
+- **File Navigation**: Browse and edit configurations across the cluster
+- **Persistent Sessions**: Connections survive browser refreshes
+- **Ansible Environment**: Pre-configured with ansible-role-for-splunk
+
+### Login Credentials
+- **Username**: `ansible`
+- **Password**: `2L6pL8IHVUOLvN9qMAt0`
+
+### Web Terminal Features
+- **ttyd Service**: Lightweight web terminal using xterm.js
+- **nginx Proxy**: Secure reverse proxy on port 3000
+- **Systemd Managed**: Automatic service startup and management
+- **SSH Integration**: Full SSH connectivity to all containers
 
 ## 🌐 External Access (Optional)
 
@@ -114,11 +134,11 @@ task twingate:stop
 Twingate can be integrated with your testing workflow:
 ```bash
 # Start testing with remote access
-task lab:test && task twingate:start
+task infra:test && task twingate:start
 
 # Access via Twingate when containers are running
 # Stop everything when done
-task lab:destroy && task twingate:stop
+task infra:destroy && task twingate:stop
 ```
 
 **Note:** Twingate provides secure, zero-trust network access to your testing environment. The connector runs independently and can be started/stopped as needed.
@@ -128,27 +148,24 @@ task lab:destroy && task twingate:stop
 ### ✅ Primary Commands (Updated for Current Taskfile)
 ```bash
 task setup              # Complete environment setup (secrets + images)
-task lab:test           # Run complete lab scenario (infrastructure + SSH)
+task infra:test         # Run complete infrastructure scenario (create + services)
 task day0:test          # Run complete Splunk deployment scenario
 task status             # Show all container status
-task lab:destroy        # Clean shutdown
+task infra:destroy      # Clean shutdown
 ```
 
-### 🔄 Lab Infrastructure Management
+### 🔄 Infrastructure Management
 ```bash
-task lab:create         # Create containers
-task lab:prepare        # Setup SSH connectivity
-task lab:converge       # Run infrastructure setup
-task lab:verify         # Verify lab deployment
-task lab:destroy        # Destroy lab infrastructure
-task lab:status         # Show lab containers status
+task infra:create       # Create all containers with services
+task infra:destroy      # Destroy all infrastructure containers
+task status             # Show all container status
 ```
 
-> Note: `lab:destroy` removes containers and the scenario network but intentionally does not delete named Docker volumes (e.g., Splunk data volumes, ssh-keys). Use `task reset` between full test runs to minimize cross-run interference.
+> Note: `infra:destroy` removes containers and the scenario network but intentionally does not delete named Docker volumes (e.g., Splunk data volumes, ssh-keys). Use `task reset` between full test runs to minimize cross-run interference.
 
 ### 🚀 Day 0 - Splunk Provisioning (SSH Architecture Working ✅)
 ```bash
-task day0:converge      # Deploy Splunk via SSH to existing lab
+task day0:converge      # Deploy Splunk via SSH to existing infrastructure
 task day0:verify        # Verify Splunk deployment
 task day0:playbook      # Direct ansible-playbook deployment (bypasses molecule)
 ```
@@ -172,7 +189,7 @@ task dev:shell          # Interactive shell in molecule-runner
 task dev:cleanup        # Clean up Docker resources
 ```
 
-**Current Status:** SSH architecture fixed across Ubuntu and AlmaLinux. Lab creation working. Inventory validated. SSH diagnostics target `full` (git_server excluded). Artifacts fetched via remote URLs. ACL install skipped for container tests. PAM/login gating stabilized.
+**Current Status:** ✅ Infrastructure scenario fully working - SSH setup, container creation, and service management all operational. Day0 deployment partially working with Splunk package downloads. Ready for next sprint to complete Splunk role integration.
 
 ## 🌐 Web Terminal Interface
 
@@ -188,7 +205,7 @@ Access the web terminal at `http://localhost:3000/ttyd`:
 
 The testing framework uses ttyd as the web terminal:
 ```bash
-task lab:test           # Creates lab with ttyd terminal
+task infra:test         # Creates infrastructure with ttyd terminal
 task diag:terminal      # Check ttyd and nginx health
 ```
 
@@ -206,12 +223,10 @@ task diag:terminal      # Check ttyd and nginx health
 # Step 1: Environment setup (one-time)
 task setup              # Complete environment setup (secrets + images)
 
-# Step 2: Lab infrastructure
-task lab:test           # Run complete lab scenario (create → prepare → verify)
-# OR step-by-step:
-task lab:create         # Create containers
-task lab:prepare        # Setup SSH connectivity
-task lab:verify         # Verify infrastructure
+# Step 2: Infrastructure creation
+task infra:create       # Create all containers (9 Splunk + git-server + services)
+# OR complete workflow:
+task infra:test         # Run complete infrastructure scenario
 
 # Step 3: Splunk deployment
 task day0:test          # Run complete deployment scenario
@@ -219,20 +234,23 @@ task day0:test          # Run complete deployment scenario
 task day0:converge      # Deploy Splunk via SSH
 task day0:verify        # Verify deployment
 
-# Step 4: Check status
+# Step 4: Operations
+task day1:test          # Run complete operations scenario
+
+# Step 5: Check status
 task status             # All containers running properly ✅
 ```
 
 ### 🎯 Complete Development Workflow
 ```bash
 # Full end-to-end testing
-task workflow:full      # Complete workflow: lab → day0 → day1
+task workflow:full      # Complete workflow: infra → day0 → day1
 
 # Quick development cycle
-task workflow:quick     # Fast iteration: lab → day0 only
+task workflow:quick     # Fast iteration: infra → day0 only
 
 # Individual scenario testing
-task lab:test           # Infrastructure testing
+task infra:test         # Infrastructure testing
 task day0:test          # Deployment testing
 task day1:test          # Operations testing (when implemented)
 ```
@@ -240,10 +258,10 @@ task day1:test          # Operations testing (when implemented)
 ### Current Development Status
 ```bash
 # Working development cycle
-task lab:test           # Create fresh lab environment ✅
+task infra:test         # Create fresh infrastructure environment ✅
 task day0:converge      # Test SSH connectivity to all hosts ✅
 task status             # Verify all containers healthy ✅
-task lab:destroy        # Clean shutdown ✅
+task infra:destroy      # Clean shutdown ✅
 
 # Next priorities:
 # - Complete Splunk role integration (acl, sudo fixes)
@@ -309,8 +327,8 @@ molecule/
 ├── inventory/           # Shared inventory drives all scenarios
 │   ├── hosts.yml       # Infrastructure specification
 │   └── group_vars/     # SSH configuration overrides
-├── lab/                # Container creation + SSH setup ✅
-├── day0/               # Splunk provisioning (SSH working) ✅  
+├── infra/              # Container creation + SSH setup + services ✅
+├── day0/               # Splunk provisioning (SSH working) ✅
 └── day1/               # Operations (planned Sprint 4)
 ```
 
@@ -400,7 +418,7 @@ Use this environment to:
 
 1. Fork the repository
 2. Create a feature branch
-3. Test changes: `task lab:test && task day0:test`
+3. Test changes: `task infra:test && task day0:test`
 4. Verify SSH connectivity: `task diag:ssh`
 5. Verify changes work across all container types
 6. Submit pull request
@@ -413,4 +431,4 @@ Use this environment to:
 
 ---
 
-**Status: SSH Architecture Fixed ✅ - ttyd Web Terminal Implemented ✅ - Taskfile Reorganized ✅ - Ready for Splunk Role Integration**
+**Status: Infrastructure Scenario Complete ✅ - SSH Setup Working ✅ - Container Management Operational ✅ - Ready for Day0 Completion**

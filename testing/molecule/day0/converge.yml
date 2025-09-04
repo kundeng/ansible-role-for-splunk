@@ -1,44 +1,33 @@
 ---
 # Molecule converge playbook for day0
-# Installs Splunk on target hosts
-
-# Copy Splunk binaries to ansible-controller for distribution
-- name: Copy Splunk binaries to ansible-controller
-  hosts: ansible_controller
-  gather_facts: false
-  tasks:
-    - name: Create software directory
-      file:
-        path: /home/ansible/software
-        state: directory
-        mode: '0755'
-
-    - name: Copy Splunk Enterprise binary
-      copy:
-        src: /workspace/testing/software/splunk-9.0.4-de405f4a7979-Linux-x86_64.tgz
-        dest: /home/ansible/software/
-        mode: '0644'
-      ignore_errors: true
-
-    - name: Copy Splunk Universal Forwarder binary
-      copy:
-        src: /workspace/testing/software/splunkforwarder-9.0.4-de405f4a7979-Linux-x86_64.tgz
-        dest: /home/ansible/software/
-        mode: '0644'
-      ignore_errors: true
+# Installs Splunk on target hosts using remote URLs
 
 # Setup role variables for Splunk installation
 - name: Setup Splunk installation variables
   hosts: all:!ansible_controller:!git_server:!jumpbox
   gather_facts: true
+  # SSH vars now come from inventory group_vars/all.yml
   tasks:
     - name: Set Splunk installation variables
       set_fact:
-        splunk_enterprise_package: "/home/ansible/software/splunk-9.0.4-de405f4a7979-Linux-x86_64.tgz"
-        splunk_uf_package: "/home/ansible/software/splunkforwarder-9.0.4-de405f4a7979-Linux-x86_64.tgz"
         splunk_install_app: true
-        splunk_build_remote_src: false
+        splunk_build_remote_src: true
         splunk_install_method: "package"
+        splunk_home: "/opt/splunk"
+        splunk_nix_home: "/opt/splunk"
+        splunk_install_path: "/opt"
 
-# Import the main Splunk installation playbook
-- import_playbook: ../../../playbooks/splunk_install_or_upgrade.yml
+# Import the main Splunk installation playbook (inherits SSH from inventory)
+- name: Install Splunk on target hosts
+  hosts: all:!ansible_controller:!git_server:!jumpbox
+  roles:
+    - ../../../roles/splunk
+  serial: 50
+  vars:
+    deployment_task: check_splunk.yml
+    splunk_install_app: true
+    splunk_build_remote_src: true
+    splunk_install_method: "package"
+    splunk_home: "/opt/splunk"
+    splunk_nix_home: "/opt/splunk"
+    splunk_install_path: "/opt"

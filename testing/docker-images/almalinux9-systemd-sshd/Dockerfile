@@ -32,7 +32,10 @@ RUN useradd -m -s /bin/bash ansible && \
     chmod 700 /home/ansible/.ssh && \
     touch /home/ansible/.ssh/authorized_keys && \
     chmod 600 /home/ansible/.ssh/authorized_keys && \
-    chown -R ansible:ansible /home/ansible/.ssh
+    chown -R ansible:ansible /home/ansible/.ssh && \
+    mkdir -p /home/ansible/.ansible && \
+    mkdir -p /home/ansible/.ansible/tmp && \
+    chown -R ansible:ansible /home/ansible/.ansible
 
 # Use distro-default PAM configuration for sudo
 

@@ -15,8 +15,19 @@ splunk_backup: true
 splunk_backup_path: "{{ splunk_home }}/.."
 splunk_backup_tar: "splunk-test-backup.tar"
 
+# SSH connection configuration for all plays (including imported playbooks)
+# These are duplicated above for clarity but will be overridden by the first definition
+
 # Testing-only toggles to avoid modifying the role under test
 skip_acl_install: true
+
+# Splunk installation configuration
+splunk_install_app: true
+splunk_build_remote_src: true
+splunk_install_method: "package"
+
+# Default container configuration
+docker_image: splunk-base-ubuntu2204:latest
 
 # Git configuration for app deployment testing
 git_server: "git@git-server"  # Using lightweight git server container
@@ -28,6 +39,7 @@ splunk_home: /opt/splunk
 splunk_install_path: /opt
 splunk_nix_user: splunk
 splunk_nix_group: splunk
+splunk_nix_home: /opt/splunk  # Explicitly set home directory for splunk user
 splunk_admin_username: admin
 splunk_admin_password: "Password123!"  # Test password
 splunk_auth: "{{ splunk_admin_username }}:{{ splunk_admin_password }}"
@@ -49,6 +61,10 @@ splunk_shc_target_group: shcluster
 splunk_version: 9.1.2
 splunk_package_url_full: "https://download.splunk.com/products/splunk/releases/9.1.2/linux/splunk-9.1.2-b6b9c8185839-Linux-x86_64.tgz"
 splunk_package_url_uf: "https://download.splunk.com/products/universalforwarder/releases/9.1.2/linux/splunkforwarder-9.1.2-b6b9c8185839-Linux-x86_64.tgz"
+
+# Additional variables for Splunk role
+splunk_file: "splunk-9.1.2-b6b9c8185839-Linux-x86_64.tgz"
+logrotate_file: "/etc/logrotate.d/splunk"
 
 # Lab environment configuration
 # Note: remoteit-jumpbox has been removed from the lab configuration

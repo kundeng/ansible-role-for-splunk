@@ -37,6 +37,7 @@ tasks:
       - docker build -t splunk-git-server:latest {{.DOCKER_IMAGES_DIR}}/gitlab/
       - docker build -t molecule-runner:latest {{.DOCKER_IMAGES_DIR}}/molecule-runner/
       - echo "✅ All images built successfully!"
+      - 'echo "📝 Note: molecule-runner image includes Molecule v25.9.0rc1 (pre-release) for native inventory support"'
 
   setup:secrets:
     desc: Create testing/.secrets directory with SSH keys and password
@@ -57,12 +58,16 @@ tasks:
 
   # === MOLECULE SCENARIOS ===
   # These map directly to testing/molecule/ scenario directories
+  # Note: getting-started scenario removed - native inventory now implemented
 
-  lab:test:
-    desc: Run complete lab scenario (create → prepare → converge → verify → destroy)
+  # Lab scenario removed - consolidated into unified infrastructure approach
+
+  # === INFRASTRUCTURE SCENARIO ===
+  infra:test:
+    desc: Run complete infra scenario (create → converge → verify → destroy)
     cmds:
       - task: setup
-      - echo "🧪 Running complete lab scenario..."
+      - echo "🏗️ Running complete infrastructure scenario..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -70,15 +75,14 @@ tasks:
           -w /workspace/testing \
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
-          molecule test -s lab
-      - echo "✅ Lab scenario complete!"
-      - echo "Access web terminal at http://localhost:3000/ttyd"
+          molecule test -s infra
+      - echo "✅ Infrastructure scenario complete!"
 
-  lab:create:
-    desc: Create lab containers (molecule create -s lab)
+  infra:create:
+    desc: Create infrastructure containers
     cmds:
       - task: setup
-      - echo "📦 Creating lab containers..."
+      - echo "📦 Creating infrastructure containers..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -86,13 +90,12 @@ tasks:
           -w /workspace/testing \
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
-          molecule create -s lab
+          molecule create -s infra
 
-  lab:prepare:
-    desc: Prepare lab infrastructure (molecule prepare -s lab)
+  infra:prepare:
+    desc: Run prepare phase for infra scenario
     cmds:
-      - task: setup
-      - echo "🧩 Preparing lab infrastructure..."
+      - echo "🔧 Running infra prepare phase..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -100,12 +103,12 @@ tasks:
           -w /workspace/testing \
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
-          molecule prepare -s lab
+          molecule prepare -s infra
 
-  lab:converge:
-    desc: Run lab converge (molecule converge -s lab)
+  infra:destroy:
+    desc: Destroy infrastructure containers
     cmds:
-      - echo "🔄 Running lab converge..."
+      - echo "💥 Destroying infrastructure containers..."
       - |
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -113,40 +116,9 @@ tasks:
           -w /workspace/testing \
           -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
           molecule-runner:latest \
-          molecule converge -s lab
-      - echo "✅ Lab converge complete!"
+          molecule destroy -s infra
 
-  lab:verify:
-    desc: Verify lab deployment (molecule verify -s lab)
-    cmds:
-      - echo "🔍 Verifying lab deployment..."
-      - |
-        docker run --rm \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          -v {{.PROJECT_ROOT}}:/workspace \
-          -w /workspace/testing \
-          -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
-          molecule-runner:latest \
-          molecule verify -s lab
-
-  lab:destroy:
-    desc: Destroy lab infrastructure (molecule destroy -s lab)
-    cmds:
-      - echo "💥 Destroying lab infrastructure..."
-      - |
-        docker run --rm \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          -v {{.PROJECT_ROOT}}:/workspace \
-          -w /workspace/testing \
-          -e HOST_PROJECT_DIRECTORY={{.PROJECT_ROOT}} \
-          molecule-runner:latest \
-          molecule destroy -s lab
-
-  lab:status:
-    desc: Show status of lab containers
-    cmds:
-      - echo "📋 Lab containers status:"
-      - docker ps --filter network=splunk-test-network --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+  # Lab destroy and status tasks removed - consolidated into infra scenario
 
   day0:test:
     desc: Run complete Day 0 scenario (converge → verify)
@@ -169,6 +141,7 @@ tasks:
       - echo "🚀 Day 0 - Deploying Splunk via SSH..."
       - |
         docker run --rm \
+          --network splunk-test-network \
           -v /var/run/docker.sock:/var/run/docker.sock \
           -v {{.PROJECT_ROOT}}:/workspace \
           -w /workspace/testing \
@@ -311,7 +284,35 @@ tasks:
     desc: Show status of all containers on splunk-test-network
     cmds:
       - echo "📋 Containers on splunk-test-network"
-      - docker ps --filter network=splunk-test-network --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+      - docker ps --filter network=splunk-test-network
+
+  # Persistent Molecule runner for debugging
+  runner:start:
+    desc: "Start persistent molecule-runner (debug)"
+    cmds:
+      - echo "🚀 Starting persistent molecule-runner..."
+      - |
+        docker run -d \
+          --name mol-run \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v {{.PROJECT_ROOT}}:/workspace \
+          -w /workspace/testing \
+          molecule-runner:latest \
+          sleep infinity
+      - |
+          echo "✅ Molecule runner started (container: mol-run)"
+
+  runner:shell:
+    desc: "Shell into persistent molecule-runner (mol-run)"
+    cmds:
+      - docker exec -it mol-run bash
+
+  runner:stop:
+    desc: "Stop and remove persistent molecule-runner (mol-run)"
+    cmds:
+      - echo "🛑 Stopping molecule-runner..."
+      - docker rm -f mol-run 2>/dev/null || true
+      - echo "✅ Molecule runner stopped"
 
   reset:
     desc: Reset everything (destroy lab + clean Docker resources)
@@ -372,17 +373,17 @@ tasks:
 
   # === WORKFLOWS ===
   workflow:full:
-    desc: Complete end-to-end workflow (lab → day0 → day1)
+    desc: Complete end-to-end workflow (infra → day0 → day1)
     cmds:
-      - task: lab:test
+      - task: infra:test
       - task: day0:test
       - task: day1:test
       - echo "🎉 Complete end-to-end workflow finished!"
 
   workflow:quick:
-    desc: Quick development cycle (lab + day0 only)
+    desc: Quick development cycle (infra + day0 only)
     cmds:
-      - task: lab:test
+      - task: infra:test
       - task: day0:test
       - echo "✅ Quick development cycle complete!"
 

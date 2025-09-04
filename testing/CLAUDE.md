@@ -13,11 +13,44 @@ This is the official Ansible role for Splunk administration (`ansible-role-for-s
 
 **Key Requirements**:
 - Minimal modification to upstream repository (additive approach)
-- Docker containers with systemd, SSH, and multi-role/multi-host scenarios  
+- Docker containers with systemd, SSH, and multi-role/multi-host scenarios
 - Realistic SSH-based deployment testing (not Docker API connections)
 - Support for multiple OS distributions (AlmaLinux 9, Ubuntu 22.04)
 - Feature branch workflow for upstream contributions
 - Clean dependency management and orchestration
+
+## ⚠️ IMPORTANT: Molecule Version Compatibility
+
+**Critical Discovery**: The official Molecule documentation examples **do not work** with the current released version (25.7.0), but **do work** with the pre-release version (25.9.0rc1).
+
+### Version Differences:
+- **Molecule 25.7.0** (current): Requires `platforms` + `driver` sections in `molecule.yml`
+- **Molecule 25.9.0rc1** (pre-release): Simplified `ansible:` section only (no platforms/driver needed)
+
+### Recommendation:
+**Use the pre-release version** for new setups to get the cleaner, documented configuration:
+```bash
+pip install --pre --upgrade molecule  # Installs v25.9.0rc1
+```
+
+This provides the simplified configuration shown in the official documentation.
+
+### Containerized Environment:
+The `molecule-runner` Docker image has been updated to automatically install the pre-release version, ensuring consistent behavior across all environments:
+```dockerfile
+# In testing/docker-images/molecule-runner/Dockerfile
+RUN pip3 install --pre --upgrade molecule
+```
+
+### Architecture Simplification:
+- **Merged ansible-controller with molecule-runner**: Single container handles both Molecule execution and Ansible control
+- **Removed getting-started scenario**: No longer needed after native inventory implementation
+- **Removed lab scenario**: Consolidated into unified infrastructure approach
+- **Streamlined container architecture**: Reduced complexity while maintaining functionality
+- **Web Terminal Integration**: Automated ttyd service setup with systemd management
+- **User Management Automation**: Automated ansible user password configuration
+- **Complete Infrastructure Creation**: Infra scenario now creates all 10 containers (9 Splunk + git-server)
+- **Cross-Scenario Container Persistence**: Containers persist across scenarios for testing continuity
 
 **Reference Repository**: The `TBD/` directory contains a private fork that serves **strictly as reference material** for informing SplunkOps role development. No compatibility with the private repo is required - it's purely for inspiration and pattern identification.
 
@@ -76,14 +109,14 @@ testing/               # Docker + Molecule testing infrastructure (implemented)
 │   ├── inventory/    # SHARED inventory - single source of truth
 │   │   ├── hosts.yml # Infrastructure specification
 │   │   └── group_vars/
-│   ├── lab/          # Lab infrastructure setup
-│   ├── day0/         # Initial Splunk provisioning
-│   └── day1/         # Operational tasks
+│   ├── infra/        # Infrastructure setup (native inventory)
+│   ├── day0/         # Initial Splunk provisioning (ansible-controller)
+│   └── day1/         # Operational tasks (ansible-controller)
 ├── docker-images/    # Custom Docker images with systemd + SSH
 │   ├── almalinux9-systemd-sshd/
 │   ├── ubuntu2204-systemd-sshd/
-│   ├── ansible-webterminal/  # Web terminal for lab access
-│   └── gitlab/              # Gitea lightweight git server
+│   ├── ansible-controller/  # Ansible controller with web terminal
+│   └── molecule-runner/     # Molecule runner with pre-release version
 └── README.md         # Testing framework documentation
 environments/          # Sample inventory structures
 TBD/                   # Reference repository (private fork - reference only)
@@ -109,27 +142,26 @@ ansible-playbook -i environments/production/inventory.yml playbooks/splunk_shc_d
 cd testing  # All testing commands run from testing directory
 
 # Complete setup from scratch
-task setup                    # Build Docker images
+task setup                    # Build Docker images (includes pre-release Molecule)
 
-# Development workflow  
-task bootstrap-create         # Create lab infrastructure containers
-task bootstrap-prepare        # Setup SSH connectivity
-task deploy-splunk           # Deploy Splunk via SSH to containers
-task verify-deployment       # Verify Splunk deployment
+# Development workflow
+task infra:test              # Create infrastructure (native inventory)
+task day0:test               # Deploy Splunk via SSH (ansible-controller)
+task day1:test               # Run operations (ansible-controller)
 
 # Combined workflows
-task test                    # Run full end-to-end test suite
-task dev-setup              # Setup development lab environment
-task quick-test             # Fast development cycle
-task prod-test              # Full production-like test
+task workflow:full           # Run infra → day0 → day1
+task workflow:quick          # Run infra → day0 only
 
 # Utilities
-task status                 # Show container status
-task open-lab              # Access web terminal (http://localhost:3000/ttyd)
-task logs <container>      # Show container logs
-task shell <container>     # Access container shell
-task destroy-containers   # Clean up containers
-task reset                 # Complete environment reset
+task status                  # Show container status
+task controller:start        # Start ansible-controller for manual testing
+task controller:shell        # Shell into ansible-controller
+task reset                   # Complete environment reset
+
+# Web terminal access (after infra:test)
+# Access at http://localhost:3000/ttyd
+# Login with: ansible / 2L6pL8IHVUOLvN9qMAt0
 ```
 
 ## Ansible Role Architecture

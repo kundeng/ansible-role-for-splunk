@@ -6,6 +6,11 @@
   hosts: all:!git_server:!ansible-controller
   become: true
   tasks:
+    - name: Include Splunk status check from upstream role
+      include_role:
+        name: splunk
+        tasks_from: check_splunk_status.yml
+
     - name: Check if Splunk service is running (full instances)
       systemd:
         name: splunk

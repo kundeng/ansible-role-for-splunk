@@ -1,172 +1,30 @@
 ---
 # Day 1 Operations - Converge
-# Performs operational tasks on running Splunk cluster
+# Performs operational tasks on running Splunk cluster using upstream playbooks
 
-- name: Day 1 Splunk Operations
+- name: Day 1 Splunk Operations - Service Restart
   hosts: all:!ansible_controller:!git_server:!jumpbox
   gather_facts: true
   tasks:
-    - name: Verify Splunk is running before operations (process check)
-      shell: ps aux | grep -v grep | grep -E 'splunkd.*start' || echo "No Splunk process found"
-      register: splunk_status
-      changed_when: false
-      ignore_errors: true
-      
-    - name: Log current Splunk operational status
-      debug:
-        msg: "Splunk service is {{ splunk_status.stdout | default('not running') }} on {{ inventory_hostname }}"
+    - name: Include Splunk restart task from upstream role
+      include_role:
+        name: splunk
+        tasks_from: splunk_restart.yml
 
-    - name: Check Splunk directories exist
-      stat:
-        path: "{{ item }}"
-      register: splunk_dirs
-      loop:
-        - /opt/splunk
-        - /opt/splunk/etc
-        - /home/splunk
-      when: inventory_hostname not in groups.get('uf', [])
+- name: Day 1 Splunk Operations - Health Checks
+  hosts: all:!ansible_controller:!git_server:!jumpbox
+  gather_facts: true
+  tasks:
+    - name: Include Splunk status check from upstream role
+      include_role:
+        name: splunk
+        tasks_from: check_splunk_status.yml
 
-    - name: Check Universal Forwarder directories exist
-      stat:
-        path: "{{ item }}"
-      register: uf_dirs
-      loop:
-        - /opt/splunkforwarder
-        - /opt/splunkforwarder/etc
-        - /opt/splunkforwarder/etc/system/local
-      when: inventory_hostname in groups.get('uf', [])
-
-    - name: Verify Splunk user exists
-      shell: grep -q '^splunk:' /etc/passwd && echo "exists" || echo "not found"
-      register: splunk_user
-      changed_when: false
-      ignore_errors: true
-
-    - name: Verify Splunk group exists
-      shell: grep -q '^splunk:' /etc/group && echo "exists" || echo "not found"
-      register: splunk_group
-      changed_when: false
-      ignore_errors: true
-
-    - name: Check Splunk configuration files
-      stat:
-        path: "/opt/splunk/etc/splunk.conf"
-      register: splunk_conf
-      when: inventory_hostname not in groups.get('uf', [])
-
-    - name: Check UF configuration files
-      stat:
-        path: "/opt/splunkforwarder/etc/system/local/deploymentclient.conf"
-      register: uf_conf
-      when: inventory_hostname in groups.get('uf', [])
-
-    - name: Check if Splunk binary exists
-      stat:
-        path: "{{ item }}"
-      register: splunk_binary
-      loop:
-        - /opt/splunk/bin/splunk
-        - /opt/splunkforwarder/bin/splunk
-      ignore_errors: true
-      
-    - name: Debug Splunk binary check
-      debug:
-        msg: "Splunk binary check: {{ splunk_binary.results | map(attribute='stat.exists') | list }}"
-
-    - name: Set Splunk binary path
-      set_fact:
-        splunk_bin: "{{ '/opt/splunk/bin/splunk' if splunk_binary.results[0].stat.exists | default(false) else '/opt/splunkforwarder/bin/splunk' }}"
-      when: splunk_binary.results[0].stat.exists | default(false) or splunk_binary.results[1].stat.exists | default(false)
-      
-    - name: Create Splunk user.seed file for auto-accept license
-      copy:
-        dest: "{{ '/opt/splunk/etc/system/local/user-seed.conf' if '/opt/splunk' in splunk_bin else '/opt/splunkforwarder/etc/system/local/user-seed.conf' }}"
-        content: |
-          [user_info]
-          USERNAME = admin
-          PASSWORD = password123
-        owner: splunk
-        group: splunk
-        mode: '0644'
-      when: splunk_bin is defined
-      
-    - name: Ensure system/local directory exists
-      file:
-        path: "{{ '/opt/splunk/etc/system/local' if '/opt/splunk' in splunk_bin else '/opt/splunkforwarder/etc/system/local' }}"
-        state: directory
-        owner: splunk
-        group: splunk
-        mode: '0755'
-      when: splunk_bin is defined
-
-    - name: Start Splunk using binary (if not already running)
-      shell: "{{ splunk_bin }} start --accept-license --answer-yes --no-prompt"
-      become: true
-      become_user: splunk
-      register: start_result
-      ignore_errors: true
-      when: splunk_bin is defined
-      
-    - name: Check Splunk binary permissions
-      stat:
-        path: "{{ splunk_bin }}"
-      register: splunk_bin_perms
-      when: splunk_bin is defined
-      
-    - name: Display Splunk binary permissions
-      debug:
-        msg: "Splunk binary permissions: {{ splunk_bin_perms.stat | default({}) }}"
-      when: splunk_bin is defined
-      
-    - name: Display Splunk start result
-      debug:
-        msg: "{{ start_result.stdout | default('No output') }}"
-      when: splunk_bin is defined
-      
-    - name: Restart Splunk using binary (if already running)
-      shell: "{{ splunk_bin }} restart --accept-license --answer-yes --no-prompt"
-      become: true
-      become_user: splunk
-      register: restart_result
-      ignore_errors: true
-      when: splunk_bin is defined and 'already running' in start_result.stdout | default('')
-
-    - name: Wait for Splunk to start
-      pause:
-        seconds: 5
-      when: splunk_bin is defined
-
-    - name: Verify Splunk is running after restart (process check)
-      shell: ps aux | grep -v grep | grep -E 'splunkd.*start' || echo "No Splunk process found"
-      register: splunk_status_after
-      changed_when: false
-      ignore_errors: true
-
-    - name: Display Splunk status after restart
-      debug:
-        msg: "Splunk processes on {{ inventory_hostname }} after restart: {{ 'Running' if 'No Splunk process found' not in splunk_status_after.stdout else 'Not running' }}"
-        
-    - name: Get detailed Splunk process information
-      shell: ps aux | grep -v grep | grep -E 'splunkd|splunk'
-      register: detailed_splunk_processes
-      changed_when: false
-      ignore_errors: true
-      
-    - name: Display detailed Splunk process information
-      debug:
-        msg: "{{ detailed_splunk_processes.stdout_lines | default(['No Splunk processes found']) }}"
-
-    - name: Summarize Splunk deployment status
-      debug:
-        msg: |
-          Splunk deployment status for {{ inventory_hostname }}:
-          - Process check: {{ 'Running' if 'No Splunk process found' not in splunk_status.stdout else 'Not running' }}
-          - User exists: {{ splunk_user.stdout == 'exists' }}
-          - Group exists: {{ splunk_group.stdout == 'exists' }}
-          {% if inventory_hostname not in groups.get('uf', []) %}
-          - Config file exists: {{ splunk_conf.stat.exists | default(false) }}
-          {% else %}
-          - UF Config file exists: {{ uf_conf.stat.exists | default(false) }}
-          {% endif %}
-          - Splunk binary found: {{ splunk_bin is defined }}
-          - Process after restart: {{ 'Running' if 'No Splunk process found' not in splunk_status_after.stdout else 'Not running' }}
+- name: Day 1 Splunk Operations - License Acceptance
+  hosts: all:!ansible_controller:!git_server:!jumpbox
+  gather_facts: true
+  tasks:
+    - name: Include Splunk license acceptance from upstream role
+      include_role:
+        name: splunk
+        tasks_from: splunk_license_accept.yml

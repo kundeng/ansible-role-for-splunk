@@ -1,10 +1,15 @@
 ---
-# Lab Infrastructure Preparation
-# Sets up SSH connectivity and basic infrastructure for all lab containers
+# Infrastructure Preparation - SSH Setup
+# Sets up SSH connectivity between ansible-controller and all Splunk containers
 
-- name: Setup Splunk Lab Infrastructure  
-  hosts: all:!git_server:!jumpbox
+- name: Setup SSH Infrastructure for Infra Scenario
+  hosts: all:!git_server
   gather_facts: true
+  connection: docker
+  become: true
+  become_user: root
+  vars:
+    ansible_connection: docker  # Override inventory SSH setting for prepare phase
   tasks:
     - name: Wait for systemd to be ready
       wait_for:
@@ -12,22 +17,10 @@
       when: ansible_service_mgr == "systemd" and inventory_hostname != 'ansible-controller'
       tags: [ssh]
 
-    # PAM configuration is now handled in the Dockerfile for both Ubuntu and AlmaLinux images
-
     - name: Define host key directory path
       set_fact:
         lab_ssh_dir: /workspace/testing/.secrets
       run_once: true
-      delegate_to: localhost
-      tags: [ssh_keys, controller]
-
-    - name: Ensure host key directory exists
-      file:
-        path: "{{ lab_ssh_dir }}"
-        state: directory
-        mode: '0700'
-      run_once: true
-      delegate_to: localhost
       tags: [ssh_keys, controller]
 
     - name: Check if runner SSH key exists (host bind mount)
@@ -35,7 +28,6 @@
         path: "{{ lab_ssh_dir }}/id_rsa"
       register: runner_key_stat
       run_once: true
-      delegate_to: localhost
       tags: [ssh_keys, controller]
 
     - name: Assert host SSH keypair exists (run task setup if missing)
@@ -47,7 +39,6 @@
             task -d testing setup
           This provisions host-side secrets and builds images.
       run_once: true
-      delegate_to: localhost
       tags: [ssh_keys, controller]
 
     - name: Check if ansible password file exists on host
@@ -55,7 +46,6 @@
         path: "{{ lab_ssh_dir }}/ansible_password"
       register: ansible_pw_stat
       run_once: true
-      delegate_to: localhost
       tags: [controller, ssh]
 
     - name: Assert ansible password file exists on host
@@ -67,7 +57,6 @@
             task -d testing setup
           This provisions host-side secrets and builds images.
       run_once: true
-      delegate_to: localhost
       tags: [controller, ssh]
 
     - name: Read ansible password from host secrets file
@@ -75,7 +64,6 @@
         src: "{{ lab_ssh_dir }}/ansible_password"
       register: ansible_pw_file
       run_once: true
-      delegate_to: localhost
       tags: [controller, ssh]
 
     - name: Set ansible_plain_password fact
@@ -93,7 +81,7 @@
             path: /run/nologin
             state: absent
           when: inventory_hostname != 'ansible-controller'
-            
+
         # Critical step: Ensure systemd-user-sessions is started
         # This service removes /run/nologin on boot
         - name: Ensure systemd-user-sessions is enabled and started
@@ -101,10 +89,10 @@
             name: systemd-user-sessions
             state: started
             enabled: true
-          when: inventory_hostname != 'ansible-controller' and ansible_service_mgr == 'systemd'
-            
-        # Ensure SSH server is running
-        - name: Ensure SSH server is running
+          when: inventory_hostname != 'ansible-controller' and ansible_service_mgr == 'systemd' and ansible_distribution != 'AlmaLinux'
+
+        # Start SSH service
+        - name: Start SSH service
           systemd:
             name: "{{ 'sshd' if ansible_os_family == 'RedHat' else 'ssh' }}"
             state: started
@@ -130,7 +118,6 @@
         - "{{ lab_ssh_dir }}/id_rsa.pub"
       register: runner_keys
       run_once: true
-      delegate_to: localhost
       tags: [controller, ssh_keys]
 
     - name: Extract runner key contents (run once)
@@ -140,7 +127,7 @@
       run_once: true
       tags: [controller, ssh_keys]
 
-    - name: Set up SSH infrastructure for all Splunk hosts
+    - name: Set up SSH infrastructure for all hosts
       block:
         - name: Copy SSH public key to authorized_keys
           copy:
@@ -175,7 +162,7 @@
             - { key: 'UsePAM', value: 'yes' }
             - { key: 'PubkeyAuthentication', value: 'yes' }
             - { key: 'PasswordAuthentication', value: 'yes' }
-          when: ansible_os_family == 'RedHat'
+          when: ansible_os_family == 'RedHat' and ansible_distribution != 'AlmaLinux'
 
         # SSH configuration is now handled in the Dockerfile
 
@@ -187,9 +174,7 @@
           loop:
             - /var/log/test-data
             - /tmp/test-logs
-          when: inventory_hostname in groups['uf']
-
-      when: inventory_hostname != 'ansible-controller'
+          when: inventory_hostname in groups['uf'] and ansible_distribution != 'Ubuntu' and ansible_distribution != 'AlmaLinux'
 
     - name: Permit user logins on systemd hosts (clear pam_nologin gate)
       block:
@@ -203,23 +188,34 @@
             name: systemd-user-sessions
             state: started
             daemon_reload: true
+          when: ansible_distribution != 'AlmaLinux'
 
         - name: Enable systemd-user-sessions at boot (ignore if static)
           systemd:
             name: systemd-user-sessions
             enabled: true
-          ignore_errors: true
-      when: ansible_service_mgr == "systemd" and inventory_hostname != 'ansible-controller'
+      when: ansible_service_mgr == "systemd"
 
     - name: Configure Ansible Controller
       block:
-        - name: Ensure SSH server is running on controller
+        # Start SSH service on controller
+        - name: Start SSH service on controller
           systemd:
             name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
             state: started
             enabled: true
           tags: [controller, ssh]
-            
+
+        # Configure SSH for ansible user
+        - name: Ensure ansible SSH directory on controller
+          file:
+            path: /home/ansible/.ssh
+            state: directory
+            mode: '0700'
+            owner: ansible
+            group: ansible
+          tags: [controller, ssh_keys]
+
         # Configure ttyd service to run as ansible user with credential authentication
         - name: Create ttyd service file
           copy:
@@ -244,7 +240,7 @@
               [Install]
               WantedBy=multi-user.target
           tags: [controller, ttyd]
-          
+
         - name: Enable ttyd service
           systemd:
             name: ttyd
@@ -252,21 +248,10 @@
             daemon_reload: yes
           tags: [controller, ttyd]
 
-        # Configure SSH for ansible user
-        - name: Ensure ansible SSH directory on controller
-          file:
-            path: /home/ansible/.ssh
-            state: directory
-            mode: '0700'
-            owner: ansible
-            group: ansible
-          tags: [controller, ssh_keys]
-            
         - name: Read private key from host path
           slurp:
             src: "{{ lab_ssh_dir }}/id_rsa"
           register: runner_priv
-          delegate_to: localhost
           run_once: true
           tags: [controller, ssh_keys]
 
@@ -274,7 +259,6 @@
           slurp:
             src: "{{ lab_ssh_dir }}/id_rsa.pub"
           register: runner_pub
-          delegate_to: localhost
           run_once: true
           tags: [controller, ssh_keys]
 
@@ -298,7 +282,7 @@
             owner: ansible
             group: ansible
           tags: [controller, ssh_keys]
-          
+
         - name: Create ansible controller SSH config
           copy:
             content: |
@@ -312,12 +296,6 @@
             group: ansible
           tags: [controller, ssh_keys]
 
-        - name: Set ansible user password on controller
-          user:
-            name: ansible
-            password: "{{ ansible_plain_password | password_hash('sha512') }}"
-            update_password: always
-          tags: [controller, ssh]
 
         # ttyd and nginx are now configured in the Dockerfile
 
@@ -335,7 +313,6 @@
           file:
             path: /etc/nginx/sites-enabled/default
             state: absent
-          ignore_errors: true
           tags: [controller, nginx]
 
         - name: Ensure ttyd is running
@@ -344,7 +321,7 @@
             state: started
             enabled: true
           tags: [controller, ttyd]
-          
+
         - name: Ensure nginx is running
           systemd:
             name: nginx
@@ -352,20 +329,18 @@
             enabled: true
           tags: [controller, nginx]
 
-        # ttyd is now the default terminal on the controller
-
       when: inventory_hostname == 'ansible-controller'
       tags: [controller]
 
 - name: Bootstrap Git Server
-  hosts: git_server  
+  hosts: git_server
   gather_facts: false  # Git server doesn't need Python3/Ansible management
   connection: docker   # Use docker connection, not SSH
+  vars:
+    ansible_connection: docker  # Override inventory SSH settings
   tasks:
     - name: Check Gitea container is running (no Python3 needed)
-      raw: "echo 'Git server container running - Gitea will auto-start'"
-      
+      raw: echo 'Git server container running - Gitea will auto-start'
+
     - name: Create test repositories (placeholder)
       raw: "echo 'Gitea ready for app repository testing'"
-
-# Remote.it Jumpbox section removed as it's no longer needed

@@ -1,60 +1,31 @@
 ---
 # Day 0 - Splunk Provisioning Scenario
 # Initial deployment of Splunk via SSH connections (production-like)
-# Assumes lab infrastructure already exists from lab scenario
+# Uses native inventory approach with pre-release Molecule v25.9.0rc1
+
+ansible:
+  cfg:
+    defaults:
+      deprecation_warnings: false
+  executor:
+    backend: ansible-playbook
+    args:
+      ansible_playbook:
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../inventory/
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
 
 driver:
-  name: docker
-
-platforms:
-  - name: ansible-controller
-    groups:
-      - ansible_controller
-  - name: splunk-master
-    groups:
-      - splunk_master
-  - name: splunk-license
-    groups:
-      - splunk_license
-  - name: splunk-deploy
-    groups:
-      - splunk_deploy
-  - name: splunk-fwdmanager
-    groups:
-      - splunk_fwdmanager
-  - name: splunkapp-prod01
-    groups:
-      - splunk_indexer
-  - name: splunkapp-prod02
-    groups:
-      - splunk_indexer
-  - name: splunkshc-prod01
-    groups:
-      - splunk_search_head
-  - name: splunkshc-prod02
-    groups:
-      - splunk_search_head
-  - name: splunk-uf01
-    groups:
-      - splunk_universal_forwarder
-
-provisioner:
-  name: ansible
-  inventory:
-    host_list:
-      - ../inventory/
-  config_options:
-    defaults:
-      host_key_checking: False
-      remote_user: ansible
-  ansible_args:
-    - --inventory-file=/tmp/molecule-ansible-inventory
+  name: default
 
 verifier:
   name: ansible
 
 scenario:
-  # Day 0 operations workflow - assumes lab infrastructure exists
+  # Day 0 operations workflow - uses existing infrastructure
   destroy_sequence:
     - cleanup
   create_sequence:

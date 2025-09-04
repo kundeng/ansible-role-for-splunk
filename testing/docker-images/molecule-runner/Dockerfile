@@ -16,18 +16,28 @@ RUN apt-get update && \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 
-# Install latest Python testing tools with molecule-plugins (preferred for 2024-2025)
-RUN uv tool install --with molecule-plugins --with requests --with docker --with passlib molecule && \
-    uv tool install ansible-lint
+# Install ansible-dev-tools for complete Ansible development environment
+RUN pip3 install ansible-dev-tools
 
-# Add tools to PATH - use molecule's bundled ansible
-ENV PATH="/root/.local/share/uv/tools/molecule/bin:/root/.local/share/uv/tools/ansible-lint/bin:$PATH"
+# Upgrade to Molecule pre-release version for native inventory support
+RUN pip3 install --pre --upgrade molecule
+
+# Intentionally do NOT install molecule-plugins to avoid container drivers
+
+# Install additional tools
+RUN uv tool install ansible-lint
+
+# Install requests library for Docker modules
+RUN pip3 install requests
+
+# Add tools to PATH
+ENV PATH="/root/.local/bin:/root/.local/share/uv/tools/ansible-lint/bin:$PATH"
 
 # Install required Ansible collections
-RUN ansible-galaxy collection install community.docker && \
-    ansible-galaxy collection install ansible.posix && \
+RUN ansible-galaxy collection install ansible.posix && \
     ansible-galaxy collection install community.crypto && \
-    ansible-galaxy collection install community.general
+    ansible-galaxy collection install community.general && \
+    ansible-galaxy collection install community.docker
 
 # Create workspace
 WORKDIR /workspace

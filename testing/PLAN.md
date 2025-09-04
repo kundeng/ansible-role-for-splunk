@@ -48,50 +48,68 @@ Brief description
 ## Current & Planned Sprint Roadmap
 <!-- Active and future sprints - keep at top for easy reading -->
 
-### 2025-09-01 - Sprint 4: Splunk Role Integration & Operations [Active]
-**Goal:** Complete Splunk role integration by fixing prerequisites and achieving full Day0 deployment
+### 2025-09-03 - Sprint 4: Architecture Simplification & Native Inventory [Completed ✅]
+**Goal:** Simplify architecture by removing redundant scenarios and implementing native inventory with pre-release Molecule
 
 **Scope:**
-- Fix Splunk role prerequisites (acl package, sudo configuration)
-- Complete day0 Splunk deployment testing
-- Implement day1 operations scenarios
-- Add verification playbooks for Splunk services and cluster health
-- CI/CD integration preparation
+- Remove getting-started scenario (no longer needed)
+- Remove lab scenario (consolidate into unified approach)
+- Convert infra to use native inventory
+- Keep day0/day1 using ansible-controller for converge phase
+- All scenarios use single source of truth (shared inventory)
+- Create all containers in infra for connectivity testing
 
-**Tasks Planned:**
-- ✅ Use inventory variables to override acl package installation (skip_acl_install: true)
-- ✅ Validate and repair sudo configuration for ansible user
-- ✅ Complete Splunk installation testing across all container types
-- ✅ Implement basic day1 operations using upstream playbooks (restart, health checks)
-- ✅ Create verification playbooks for deployment validation
-- ✅ Prepare CI/CD workflow structure
+**Tasks Completed:**
+- ✅ **Molecule Version Upgrade**: Successfully tested v25.9.0rc1 with native inventory
+- ✅ **Native Inventory Implementation**: Working configuration without platforms/driver sections
+- ✅ **Taskfile Cleanup**: Removed getting-started and lab scenario tasks
+- ✅ **Documentation Updates**: Updated CLAUDE.md and PLAN.md with new architecture
+- ✅ **Infra Conversion**: Updated infra scenario to use native inventory
+- ✅ **Day0/Day1 Updates**: Updated to create ansible-controller containers independently
+- ✅ **Dockerfile Update**: Updated molecule-runner Dockerfile to use pre-release Molecule v25.9.0rc1
+- ✅ **Container Creation**: Infra now creates all containers (Splunk + git-server) for connectivity testing
+- ✅ **Network Setup**: All containers on splunk-test-network for proper communication
+- ✅ **Old Directories Removed**: Deleted getting-started and lab directories
+- ✅ **Web Terminal Setup**: Automated ttyd service creation and ansible user password setup
+- ✅ **Container Image Management**: Fixed ansible-controller image selection logic
+- ✅ **Infrastructure Provisioning**: Complete end-to-end container creation with services
 
-**Expected Technical Achievements:**
-- Full Splunk deployment working end-to-end in containers
-- SSH-based deployment testing fully operational
-- Basic operational scenarios implemented
-- Verification framework established
-- CI/CD integration foundation laid
-
-**Key Files to Modify:**
-- `testing/molecule/inventory/group_vars/all.yml`: Set skip_acl_install: true
-- `testing/molecule/day0/converge.yml`: Update deployment playbooks
-- `testing/molecule/day1/converge.yml`: Implement operations using upstream playbooks
-- `testing/Taskfile.yml`: Add verification and CI/CD tasks
-- `testing/docker-images/almalinux9-systemd-sshd/Dockerfile`: Fix PAM/sudo issues
+**Technical Achievements:**
+- **infra**: Uses native inventory (molecule-runner, no platforms/driver)
+- **day0**: Creates ansible-controller + all Splunk containers (traditional approach)
+- **day1**: Uses ansible-controller for operations (traditional approach)
+- **Single Source of Truth**: All scenarios use shared `testing/molecule/inventory/`
+- **Pre-release Molecule**: v25.9.0rc1 automatically installed in molecule-runner
+- **Simplified Workflow**: `infra:test` → `day0:test` → `day1:test`
+- **Complete Infrastructure**: All 10 containers created in infra (9 Splunk + git-server)
+- **Cross-Scenario Persistence**: Containers persist across scenario runs for testing continuity
+- **Web Terminal**: Automated ttyd setup with systemd service management
+- **User Management**: Automated ansible user password configuration
+- **Container Networking**: Docker network with hostname resolution working
+- **Image Selection Logic**: Fixed docker_image variable handling for mixed OS types
 
 **Success Criteria:**
 ```bash
-task lab-create         # Creates infrastructure successfully
-task day0-deploy        # Deploys Splunk without errors
-task day0-verify        # All Splunk services running and healthy
-task day1               # Basic operations execute successfully
+# Pre-release Molecule working
+task setup                    # Builds molecule-runner with v25.9.0rc1
+task infra:create            # Creates all 10 containers on splunk-test-network
+task infra:destroy           # Cleans up all containers gracefully
+task day0:test               # Creates ansible-controller and deploys Splunk
+task day1:test               # Runs operations using ansible-controller
+
+# Web terminal access
+curl http://localhost:3000/ttyd/  # Returns ttyd interface
+# Login with: ansible / 2L6pL8IHVUOLvN9qMAt0
 ```
 
-**Dependencies:**
-- Current SSH architecture working (✅ completed)
-- ttyd web terminal functional (✅ completed)
-- Shared inventory stable (✅ completed)
+**Final Architecture:**
+- **infra**: Native inventory approach (fast, CI-friendly infrastructure setup with all containers)
+- **day0**: Traditional approach with ansible-controller (production-like deployment)
+- **day1**: Traditional approach with ansible-controller (operations and maintenance)
+- **All scenarios**: Use single source of truth from `testing/molecule/inventory/`
+- **Container Persistence**: Cross-scenario container management for testing continuity
+- **Web Terminal**: ttyd service with nginx proxy for browser access
+- **User Authentication**: ansible user with password-based login
 
 ### 2025-09-15 - Sprint 5: Day1 Operations Implementation [Planned]
 **Goal:** Implement comprehensive Day1 operations testing for production readiness
@@ -230,25 +248,29 @@ task perf-test          # Performance validation
 - **Shared inventory**: Single source of truth for all scenarios
 - **Container networking**: Docker network and volume sharing functional
 - **Task orchestration**: Complete workflow via Taskfile.yml
+- **Molecule v25.9.0rc1**: Pre-release version with native inventory support
+- **Native inventory**: Working configuration without platforms/driver sections
 
 ### 🚧 Current Blockers (Sprint 4 Focus)
+- **Architecture simplification**: Remove getting-started and lab scenarios
+- **Container consolidation**: Merge ansible-controller with molecule-runner
 - **Splunk role prerequisites**: acl package and sudo configuration issues
 - **Day0 deployment completion**: Full Splunk installation testing needed
 - **Day1 operations**: Basic operational scenarios not yet implemented
-- **Verification framework**: Limited health check capabilities
 
 ### 🎯 Immediate Priorities
-1. **Fix Splunk prerequisites** (acl, sudo) for AlmaLinux containers
-2. **Complete Day0 deployment** end-to-end testing
-3. **Implement basic Day1 operations** (restart, health checks)
-4. **Create verification playbooks** for deployment validation
-5. **Prepare CI/CD foundation** for automated testing
+1. **Complete architecture cleanup** (remove redundant scenarios)
+2. **Merge ansible-controller with molecule-runner** (single container)
+3. **Fix Splunk prerequisites** (acl, sudo) for AlmaLinux containers
+4. **Complete Day0 deployment** end-to-end testing
+5. **Implement basic Day1 operations** (restart, health checks)
 
 ### 📊 Success Metrics
+- **Native Inventory Working**: `task infra:test` uses simplified molecule.yml
+- **Architecture Simplified**: No redundant getting-started/lab scenarios
+- **Container Consolidation**: Single molecule-runner handles all functions
 - **Day0 Success**: `task day0-deploy && task day0-verify` passes
 - **Operations Ready**: `task day1` executes all scenarios
-- **CI/CD Active**: Automated testing on PR/merge
-- **Documentation Complete**: All workflows documented
 
 ---
 

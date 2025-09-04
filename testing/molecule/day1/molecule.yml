@@ -7,37 +7,201 @@ driver:
   name: docker
 
 platforms:
+  # Ansible Controller for operations
+  - name: ansible-controller
+    image: splunk-ansible-controller:latest
+    pre_build_image: true
+    privileged: true
+    cgroupns_mode: host
+    networks:
+      - name: splunk-test-network
+    published_ports:
+      - "3000:3000"  # Web terminal access
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - ${HOST_PROJECT_DIRECTORY}:/workspace:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
+    groups:
+      - controller
+    ansible_connection: docker
+    ansible_user: root
+
+  # Splunk infrastructure for operations
   - name: splunk-master
+    image: splunk-base-almalinux9:latest
+    pre_build_image: true
+    privileged: true
+    cgroupns_mode: host
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - splunk-master-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
     groups:
       - clustermanager
+    ansible_connection: docker
+    ansible_user: root
+
   - name: splunk-license
+    image: splunk-base-ubuntu2204:latest
+    pre_build_image: true
+    privileged: true
+    cgroupns_mode: host
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - splunk-license-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
     groups:
       - licensemaster
+    ansible_connection: docker
+    ansible_user: root
+
   - name: splunk-deploy
+    image: splunk-base-ubuntu2204:latest
+    pre_build_image: true
+    privileged: true
+    cgroupns_mode: host
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - splunk-deployer-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
     groups:
       - deploymentserver
+    ansible_connection: docker
+    ansible_user: root
+
   - name: splunk-fwdmanager
+    image: splunk-base-almalinux9:latest
+    pre_build_image: true
+    privileged: true
+    cgroupns_mode: host
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - splunk-ds-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
     groups:
       - forwardermanager
+    ansible_connection: docker
+    ansible_user: root
+
   - name: splunkshc-prod01
+    image: splunk-base-ubuntu2204:latest
+    pre_build_image: true
+    privileged: true
+    cgroupns_mode: host
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - splunk-shc1-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
     groups:
       - shcluster
       - shdeployer
+    ansible_connection: docker
+    ansible_user: root
+
   - name: splunkshc-prod02
+    image: splunk-base-almalinux9:latest
+    pre_build_image: true
+    privileged: true
+    cgroupns_mode: host
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - splunk-shc2-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
     groups:
       - shcluster
+    ansible_connection: docker
+    ansible_user: root
+
   - name: splunkapp-prod01
+    image: splunk-base-ubuntu2204:latest
+    pre_build_image: true
+    privileged: true
+    cgroupns_mode: host
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - splunk-idx1-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
     groups:
       - searchheads
+    ansible_connection: docker
+    ansible_user: root
+
   - name: splunkapp-prod02
+    image: splunk-base-almalinux9:latest
+    pre_build_image: true
+    privileged: true
+    cgroupns_mode: host
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - splunk-idx2-data:/opt/splunk:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
     groups:
       - searchheads
+    ansible_connection: docker
+    ansible_user: root
+
   - name: splunk-uf01
+    image: splunk-base-ubuntu2204:latest
+    pre_build_image: true
+    privileged: true
+    cgroupns_mode: host
+    networks:
+      - name: splunk-test-network
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - splunk-uf1-data:/opt/splunkforwarder:rw
+    tmpfs:
+      - /run
+      - /tmp
+    command: /usr/sbin/init
     groups:
       - uf
-  - name: ansible-controller
-    groups:
-      - controller
+    ansible_connection: docker
+    ansible_user: root
 
 dependency:
   name: shell
@@ -46,8 +210,7 @@ dependency:
 provisioner:
   name: ansible
   inventory:
-    host_list:
-      - ../inventory/
+    - ../inventory/
   config_options:
     defaults:
       host_key_checking: False

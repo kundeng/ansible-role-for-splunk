@@ -23,11 +23,17 @@ RUN mkdir /var/run/sshd && \
 RUN useradd -m -s /bin/bash ansible && \
     echo 'ansible:ansible' | chpasswd && \
     echo 'ansible ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ansible && \
-    chmod 0440 /etc/sudoers.d/ansible
+    chmod 0440 /etc/sudoers.d/ansible && \
+    mkdir -p /home/ansible/.ansible && \
+    mkdir -p /home/ansible/.ansible/tmp && \
+    chown -R ansible:ansible /home/ansible/.ansible
 
 # Enable systemd-user-sessions to permit non-root logins after boot
 RUN ln -sf /lib/systemd/system/systemd-user-sessions.service \
         /etc/systemd/system/multi-user.target.wants/systemd-user-sessions.service
+
+# Enable SSH service (this was missing!)
+RUN systemctl enable ssh.service
 
 VOLUME ["/sys/fs/cgroup"]
 EXPOSE 22
