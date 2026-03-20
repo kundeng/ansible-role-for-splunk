@@ -1,0 +1,27 @@
+---
+# Production environment overrides
+# Inherits common vars from environments/common/
+
+splunk_nix_home: /opt/splunk
+
+# Git configuration for app deployment testing
+git_server: "git@git-server"
+git_key: "/tmp/test_git_key"
+git_local_clone_path: ~/git_apps
+
+# Cluster configuration
+splunk_idxc_key: test-indexer-key
+splunk_idxc_rf: 1
+splunk_idxc_sf: 1
+splunk_idxc_rep_port: 9887
+splunk_idxc_label: test-idxc
+
+splunk_shc_key: test-searchhead-key
+splunk_shc_label: test-shc
+splunk_shc_rf: 2
+splunk_shc_rep_port: 8100
+splunk_shc_target_group: shcluster
+
+# Lab environment configuration
+# Web terminal access is available at http://localhost:3000/ttyd.
+# Credentials: username `ansible`, password in `testing/.secrets/ansible_password`.

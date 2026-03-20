@@ -1,0 +1,5 @@
+---
+# Small environment overrides
+# Inherits common vars from environments/common/
+
+splunk_download_local: true

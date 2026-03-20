@@ -1,0 +1,59 @@
+---
+# Day 1 Operations - Verification
+# Independently verifies Splunk services are running (does not use the role under test)
+
+- name: Verify Day 1 Operations
+  hosts: all:!ansible_controller:!git_server:!jumpbox
+  gather_facts: true
+  tasks:
+    - name: Check if Splunk binary exists
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: splunk_binary
+      become: true
+      loop:
+        - /opt/splunk/bin/splunk
+        - /opt/splunkforwarder/bin/splunk
+
+    - name: Assert Splunk binary exists
+      ansible.builtin.assert:
+        that:
+          - splunk_binary.results[0].stat.exists or splunk_binary.results[1].stat.exists
+        fail_msg: "No Splunk binary found at /opt/splunk or /opt/splunkforwarder on {{ inventory_hostname }}"
+
+    - name: Set Splunk home path
+      ansible.builtin.set_fact:
+        splunk_home: "{{ '/opt/splunk' if splunk_binary.results[0].stat.exists else '/opt/splunkforwarder' }}"
+
+    - name: Detect Splunk Enterprise systemd unit
+      ansible.builtin.stat:
+        path: /etc/systemd/system/Splunkd.service
+      register: splunkd_unit
+      become: true
+
+    - name: Detect Splunk Forwarder systemd unit
+      ansible.builtin.stat:
+        path: /etc/systemd/system/SplunkForwarder.service
+      register: splunkfwd_unit
+      become: true
+
+    - name: Set splunk_service fact
+      ansible.builtin.set_fact:
+        splunk_service: >-
+          {{ 'Splunkd' if splunkd_unit.stat.exists | default(false)
+          else ('SplunkForwarder' if splunkfwd_unit.stat.exists | default(false)
+          else 'unknown') }}
+
+    - name: Verify Splunk service is active
+      ansible.builtin.command: "systemctl is-active {{ splunk_service }}"
+      register: splunk_service_status
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: Confirm operational status
+      ansible.builtin.assert:
+        that:
+          - splunk_service_status.stdout | trim == 'active'
+        success_msg: "{{ splunk_service }} is active on {{ inventory_hostname }}"
+        fail_msg: "{{ splunk_service }} not active on {{ inventory_hostname }} (status={{ splunk_service_status.stdout | default('unknown') | trim }})"

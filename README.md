@@ -14,6 +14,7 @@ ansible-role-for-splunk is used by the Splunk@Splunk team to manage Splunk's cor
 1. [Purpose](#purpose)
 1. [Getting Started](#getting-started)
 1. [Extended Documentation](#extended-documentation)
+1. [Testing](#testing)
 1. [Frequently Asked Questions](#frequently-asked-questions)
 1. [Support](#support)
 1. [License](#license)
@@ -193,6 +194,9 @@ The following task files can also be included individually from other tasks usin
 - **splunk_idx/cm_status.yml** - Queries `/services/cluster/manager/status`. Sets `_cm_status`.
 - **splunk_idx/cm_peers.yml** - Queries `/services/cluster/manager/peers`. Sets `_cm_peers_by_guid` (dict keyed by peer GUID). When `cm_poll_peer_guids` is set (list of GUIDs), polls each peer's individual endpoint with retries until its status is `Up`. Retry count and delay are configurable via `cm_peer_wait_retries` (default: 20) and `cm_peer_wait_delay` (default: 30 seconds).
 - **splunk_idx/cm_rolling_upgrade.yml** - POSTs to the CM's rolling upgrade control endpoint. Requires `ru_state` to be set to either `init` or `finalize`, and only applies to hosts in the `clustermanager` group.
+
+## Testing
+See [testing/README.md](testing/README.md) for details on running the local integration test harness.
 
 ## Frequently Asked Questions
 **Q:** What is the difference between this and splunk-ansible?

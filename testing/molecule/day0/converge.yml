@@ -1,0 +1,29 @@
+---
+# Molecule converge playbook for day0
+# Installs Splunk on target hosts
+
+- name: Ensure Splunk boot-start is configured for existing installs
+  hosts: all:!ansible_controller:!git_server:!jumpbox
+  gather_facts: true
+  tasks:
+    - name: Check if Splunk Enterprise is installed
+      ansible.builtin.stat:
+        path: /opt/splunk/bin/splunk
+      register: splunk_ent_stat
+      become: true
+      changed_when: false
+
+    - name: Enable boot-start on existing Splunk installs
+      ansible.builtin.include_role:
+        name: splunk
+      vars:
+        deployment_task: configure_splunk_boot.yml
+      when: splunk_ent_stat.stat.exists | default(false)
+
+- name: Install Splunk on target hosts
+  hosts: all:!ansible_controller:!git_server:!jumpbox
+  roles:
+    - ../../../roles/splunk
+  serial: 50
+  vars:
+    deployment_task: check_splunk.yml

@@ -1,0 +1,37 @@
+---
+# Unified Infrastructure Scenario
+# Uses MOLECULE_ENV to select environment inventory (default: small)
+#
+# Usage:
+#   MOLECULE_ENV=small molecule test -s infra   # 2 nodes
+#   MOLECULE_ENV=prod molecule test -s infra    # 9 nodes
+#   MOLECULE_ENV=dev molecule test -s infra     # 1 node
+
+ansible:
+  cfg:
+    defaults:
+      deprecation_warnings: false
+  executor:
+    backend: ansible-playbook
+    args:
+      ansible_playbook:
+        - --inventory=/workspace/testing/.secrets/inventory/
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../environments/common/
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../environments/${MOLECULE_ENV:-small}/
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+
+driver:
+  name: default
+
+scenario:
+  test_sequence:
+    - dependency
+    - destroy
+    - create
+    - prepare
+    - verify
+    - destroy

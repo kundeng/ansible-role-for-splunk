@@ -1,0 +1,17 @@
+---
+# Day 1 Operations - Converge
+# Performs operational tasks on running Splunk cluster using the upstream role
+
+- name: Day 1 Splunk Operations - Service Restart
+  hosts: all:!ansible_controller:!git_server:!jumpbox
+  roles:
+    - ../../../roles/splunk
+  vars:
+    deployment_task: splunk_restart.yml
+
+- name: Day 1 Splunk Operations - Health Checks
+  hosts: all:!ansible_controller:!git_server:!jumpbox
+  roles:
+    - ../../../roles/splunk
+  vars:
+    deployment_task: check_splunk_status.yml
