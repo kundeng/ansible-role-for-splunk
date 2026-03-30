@@ -1,6 +1,7 @@
-# Splunk Testing Framework Task Runner
-# =====================================
-# Parameterized Molecule scenarios with environment selection
+# Splunk Virtual Lab - Task Runner
+# =================================
+# Single entry point for the Docker + Molecule testing harness.
+# Run on the host with: task <command>
 #
 # Environments:
 #   small  - 2 nodes (default)
@@ -8,9 +9,9 @@
 #   dev    - 1 node (all-in-one)
 #
 # Quick Start:
-#   ./run-tests.sh setup
-#   ./run-tests.sh workflow:full
-#   MOLECULE_ENV=prod ./run-tests.sh infra:test
+#   task setup
+#   task workflow:full
+#   MOLECULE_ENV=prod task infra:test
 
 version: '3'
 
@@ -19,6 +20,7 @@ dotenv: ['.env']
 vars:
   PROJECT_ROOT: '{{.TASKFILE_DIR}}/..'
   DOCKER_IMAGES_DIR: '{{.TASKFILE_DIR}}/docker-images'
+  SECRETS_DIR: '{{.TASKFILE_DIR}}/.secrets'
   # Default environment - can be overridden via MOLECULE_ENV env var
   ENV: '{{.MOLECULE_ENV | default "small"}}'
   # Common docker run args for molecule tasks (ENV resolved per-invocation)
@@ -51,19 +53,27 @@ tasks:
       - task: network:create
       - task: runner:start
       - echo "Environment setup complete!"
-      - echo "Run './run-tests.sh infra:test' (or 'MOLECULE_ENV=prod ./run-tests.sh infra:test') to start testing"
+      - echo "Run 'task infra:test' (or 'MOLECULE_ENV=prod task infra:test') to start testing"
 
   setup:secrets:
-    desc: Verify secrets exist (created by run-tests.sh on the host)
+    desc: Generate SSH keys and secrets (idempotent, runs on host)
     dir: "{{.PROJECT_ROOT}}/testing"
     cmds:
+      - mkdir -p {{.SECRETS_DIR}}/inventory/group_vars
+      - chmod 700 {{.SECRETS_DIR}}
+      - test -f {{.SECRETS_DIR}}/id_rsa || ssh-keygen -t rsa -b 2048 -N '' -C 'splunk-test-cluster' -f {{.SECRETS_DIR}}/id_rsa
+      - test -f {{.SECRETS_DIR}}/ansible_password || dd if=/dev/urandom bs=1 count=100 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 20 > {{.SECRETS_DIR}}/ansible_password
+      - test -f {{.SECRETS_DIR}}/inventory/inventory.yml || printf -- '---\nall:\n' > {{.SECRETS_DIR}}/inventory/inventory.yml
       - |
-        if [ -f .secrets/id_rsa ] && [ -f .secrets/inventory/group_vars/all.yml ]; then
-          echo "Secrets OK"
-        else
-          echo "ERROR: Secrets not found. Run ./testing/run-tests.sh to create them." >&2
-          exit 1
-        fi
+        test -f {{.SECRETS_DIR}}/inventory/group_vars/all.yml || printf -- '---\nsplunk_admin_password: %s\ngitea_secret_key: %s\n' \
+          "$(dd if=/dev/urandom bs=1 count=100 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 20)" \
+          "$(dd if=/dev/urandom bs=1 count=100 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 40)" \
+          > {{.SECRETS_DIR}}/inventory/group_vars/all.yml
+      - echo "Secrets OK"
+    status:
+      - test -f {{.SECRETS_DIR}}/id_rsa
+      - test -f {{.SECRETS_DIR}}/ansible_password
+      - test -f {{.SECRETS_DIR}}/inventory/group_vars/all.yml
 
   setup:images:
     desc: Build all Docker images required for testing (idempotent)
@@ -83,6 +93,16 @@ tasks:
       - docker images | grep -q splunk-git-server:latest
       - docker images | grep -q molecule-runner:latest
 
+  setup:rebuild:
+    desc: Force rebuild all Docker images
+    cmds:
+      - docker build -t splunk-base-almalinux9:latest {{.DOCKER_IMAGES_DIR}}/almalinux9-systemd-sshd/
+      - docker build -t splunk-base-ubuntu2204:latest {{.DOCKER_IMAGES_DIR}}/ubuntu2204-systemd-sshd/
+      - docker build -t splunk-ansible-controller:latest {{.DOCKER_IMAGES_DIR}}/ansible-controller/
+      - docker build -t splunk-git-server:latest {{.DOCKER_IMAGES_DIR}}/git-server/
+      - docker build -t molecule-runner:latest {{.DOCKER_IMAGES_DIR}}/molecule-runner/
+      - echo "All images rebuilt!"
+
   download:splunk:
     desc: "Download Splunk binaries using version from environment group_vars (idempotent)"
     cmds:
@@ -92,7 +112,7 @@ tasks:
           -w /workspace/testing \
           -e MOLECULE_ENV={{.ENV}} \
           molecule-runner:latest \
-          bash -c "ansible-playbook -e ansible_connection=local molecule/download.yml && chown -R ${HOST_UID:-0}:${HOST_GID:-0} /workspace/testing/software"
+          bash -c "ansible-playbook -e ansible_connection=local molecule/download.yml && chown -R $(id -u):$(id -g) /workspace/testing/software"
 
   network:create:
     desc: Create Docker network for testing (idempotent)
@@ -199,7 +219,7 @@ tasks:
       - task: infra:setup
       - task: day0:test
       - echo "Quick workflow complete!"
-      - echo "Run './run-tests.sh infra:destroy' to clean up"
+      - echo "Run 'task infra:destroy' to clean up"
 
   # === Diagnostics ===
 

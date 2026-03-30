@@ -241,6 +241,39 @@
             group: ansible
           tags: [controller, ssh_keys]
 
+        - name: Determine MOLECULE_ENV
+          ansible.builtin.set_fact:
+            _molecule_env: "{{ lookup('env', 'MOLECULE_ENV') | default('small', true) }}"
+          tags: [controller, ansible_cfg]
+
+        - name: Deploy ansible.cfg on controller
+          ansible.builtin.copy:
+            content: |
+              [defaults]
+              inventory = /workspace/testing/.secrets/inventory/,/workspace/testing/molecule/environments/common/,/workspace/testing/molecule/environments/{{ _molecule_env }}/
+              roles_path = /workspace/roles
+              host_key_checking = False
+              deprecation_warnings = False
+
+              [ssh_connection]
+              ssh_args = -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o Compression=no -o TCPKeepAlive=yes
+              transfer_method = scp
+            dest: /home/ansible/ansible.cfg
+            owner: ansible
+            group: ansible
+            mode: '0644'
+          tags: [controller, ansible_cfg]
+
+        - name: Set ANSIBLE_CONFIG in ansible user profile
+          ansible.builtin.lineinfile:
+            path: /home/ansible/.bashrc
+            line: 'export ANSIBLE_CONFIG=/home/ansible/ansible.cfg'
+            create: true
+            owner: ansible
+            group: ansible
+            mode: '0644'
+          tags: [controller, ansible_cfg]
+
         - name: Ensure nginx sites directories exist
           ansible.builtin.file:
             path: "{{ item }}"
